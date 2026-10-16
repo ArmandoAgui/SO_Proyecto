@@ -1,0 +1,17 @@
+# Productos de compilación
+/build/
+/bin/
+*.o
+*.a
+*.so
+# Ejecución y herramientas
+*.log
+core
+core.*
+.vscode/
+.idea/
+# Temporales editoriales
+*.aux
+*.out
+*.toc
+*.synctex.gz
