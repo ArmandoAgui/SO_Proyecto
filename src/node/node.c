@@ -1,6 +1,8 @@
 #define _POSIX_C_SOURCE 200809L
 #include "dsm/node.h"
 #include "dsm/network.h"
+#include "dsm/protocol.h"
+#include <stdlib.h>
 
 #include <errno.h>
 #include <poll.h>
@@ -43,13 +45,14 @@ static DSMStatus establish_connection(DSMNode *node)
         printf("[NODE 1] Esperando conexión de Nodo 0\n");
         struct pollfd listener = {.fd = node->server_fd, .events = POLLIN};
         while (!stop_requested) {
-            int result = poll(&listener, 1, -1);
+            int result = poll(&listener, 1, 100);
             if (result < 0) {
                 if (errno == EINTR) {
                     continue;
                 }
                 return node_error(node, "esperar conexión");
             }
+            if (result == 0) continue;
             node->peer_fd = dsm_network_accept_peer(node->server_fd);
             if (node->peer_fd < 0) {
                 if (errno == EINTR) {
@@ -85,92 +88,167 @@ static DSMStatus establish_connection(DSMNode *node)
     return DSM_OK;
 }
 
-static DSMStatus run_session(DSMNode *node)
+typedef struct {
+    DSMNode *node;
+    DSMProtocol protocol;
+    DSMSendBuffer outgoing;
+    DSMReceiveBuffer incoming;
+    int initialized;
+} DSMSession;
+
+static DSMStatus queue_message(void *context, const DSMMessage *message)
 {
-    DSMLineBuffer line = {0};
+    DSMSession *session = context;
+    printf("[NODE %d] SEND %s origin=%u req=%u page=%u version=%u flags=%u bytes=%u\n",
+           session->node->id, dsm_protocol_message_name(message->type), message->origin_id,
+           message->request_id, message->page_id, message->page_version,
+           message->flags, message->payload_len);
+    return dsm_network_queue(&session->outgoing, message);
+}
+
+static DSMStatus session_loop(DSMSession *session)
+{
+    DSMNode *node = session->node;
+    DSMLineBuffer hello = {0};
     int hello_complete = 0;
-    char command[16];
-    size_t command_used = 0;
+    int exiting = 0;
     int command_overflow = 0;
-    if (node->id == 0 && send_hello(node) != DSM_OK) {
-        return DSM_ERROR;
-    }
+    size_t command_used = 0;
+    char command_line[DSM_PAGE_BYTES + 64];
+    int64_t hello_started = dsm_monotonic_ms();
+    int64_t frame_started = 0, send_started = 0;
+    if (node->id == 0 && send_hello(node) != DSM_OK) return DSM_ERROR;
     while (!stop_requested) {
+        if (exiting && !dsm_protocol_busy(&session->protocol) && session->outgoing.used == 0) {
+            return DSM_OK;
+        }
+        short socket_events = POLLIN;
+        if (session->outgoing.used) socket_events |= POLLOUT;
         struct pollfd descriptors[2] = {
-            {.fd = node->peer_fd, .events = POLLIN},
-            {.fd = hello_complete ? STDIN_FILENO : -1, .events = POLLIN}
+            {.fd = node->peer_fd, .events = socket_events},
+            {.fd = session->protocol.peer_ready && !exiting ? STDIN_FILENO : -1, .events = POLLIN}
         };
-        /* Receive never blocks on a partial line. A silent/incomplete HELLO
-         * times out after 10 seconds without socket activity. */
-        int result = poll(descriptors, 2, hello_complete ? -1 : HELLO_TIMEOUT_MS);
+        int result = poll(descriptors, 2, 100);
         if (result < 0) {
-            if (errno == EINTR) {
-                continue;
-            }
+            if (errno == EINTR) continue;
             return node_error(node, "esperar eventos");
         }
-        if (result == 0) {
+        int64_t now = dsm_monotonic_ms();
+        if ((!session->protocol.peer_ready && now - hello_started >= HELLO_TIMEOUT_MS) ||
+            dsm_protocol_expired(&session->protocol, now) ||
+            (frame_started && now - frame_started >= DSM_OPERATION_TIMEOUT_MS) ||
+            (send_started && now - send_started >= DSM_OPERATION_TIMEOUT_MS)) {
             errno = ETIMEDOUT;
-            return node_error(node, "esperar HELLO");
+            return node_error(node, !session->protocol.peer_ready ? "esperar HELLO" : "esperar operación/trama DSM");
         }
         if (descriptors[0].revents & (POLLIN | POLLHUP | POLLERR | POLLNVAL)) {
-            DSMStatus status = dsm_network_receive(node->peer_fd, &line);
-            if (status == DSM_ERROR) {
-                return node_error(node, "recibir mensaje");
-            }
-            if (status == DSM_CLOSED) {
-                printf("[NODE %d] Peer desconectado; conexión cerrada por el peer\n", node->id);
-                if (!hello_complete) {
+            if (!hello_complete) {
+                DSMStatus status = dsm_network_receive(node->peer_fd, &hello);
+                if (status == DSM_ERROR) return node_error(node, "recibir mensaje");
+                if (status == DSM_CLOSED) {
                     errno = EPROTO;
                     return node_error(node, "completar HELLO (cierre prematuro)");
                 }
-                return DSM_OK;
-            }
-            if (status == DSM_OK) {
-                const char *expected = node->id == 0 ? "HELLO_ACK 1" : "HELLO 0";
-                printf("[NODE %d] Mensaje recibido: %s\n", node->id, line.data);
-                if (hello_complete || strcmp(line.data, expected) != 0) {
-                    errno = EPROTO;
-                    return node_error(node, "validar mensaje HELLO");
+                if (status == DSM_OK) {
+                    const char *expected = node->id == 0 ? "HELLO_ACK 1" : "HELLO 0";
+                    printf("[NODE %d] Mensaje recibido: %s\n", node->id, hello.data);
+                    if (strcmp(hello.data, expected) != 0) {
+                        errno = EPROTO;
+                        return node_error(node, "validar mensaje HELLO");
+                    }
+                    if (node->id == 1 && send_hello(node) != DSM_OK) return DSM_ERROR;
+                    hello_complete = 1;
+                    printf("[NODE %d] Intercambio HELLO completo\n", node->id);
+                    if (dsm_protocol_init(&session->protocol, node->id, queue_message, session) != DSM_OK) {
+                        return node_error(node, "reservar memoria local");
+                    }
+                    session->initialized = 1;
+                    if (dsm_protocol_start(&session->protocol) != DSM_OK) return DSM_ERROR;
                 }
-                line.used = 0;
-                if (node->id == 1 && send_hello(node) != DSM_OK) {
-                    return DSM_ERROR;
+            } else {
+                /* Bound each dispatch batch so stdin and deadlines stay responsive. */
+                for (int i = 0; i < 32; ++i) {
+                    DSMMessage message = {0};
+                    DSMStatus status = dsm_network_receive_message(node->peer_fd, &session->incoming, &message);
+                    if (status == DSM_AGAIN) {
+                        if (session->incoming.used && !frame_started) frame_started = now;
+                        break;
+                    }
+                    if (status == DSM_ERROR) return node_error(node, "recibir mensaje DSM");
+                    if (status == DSM_CLOSED) {
+                        printf("[NODE %d] Peer desconectado; conexión cerrada por el peer\n", node->id);
+                        if (!session->protocol.peer_ready || dsm_protocol_busy(&session->protocol)) {
+                            errno = EPROTO;
+                            return node_error(node, "completar sesión DSM (cierre con operación pendiente)");
+                        }
+                        return DSM_OK;
+                    }
+                    frame_started = 0;
+                    printf("[NODE %d] RECV %s origin=%u req=%u page=%u version=%u flags=%u bytes=%u\n",
+                           node->id, dsm_protocol_message_name(message.type), message.origin_id,
+                           message.request_id, message.page_id, message.page_version,
+                           message.flags, message.payload_len);
+                    if (dsm_protocol_on_message(&session->protocol, &message) != DSM_OK) return DSM_ERROR;
                 }
-                hello_complete = 1;
-                printf("[NODE %d] Intercambio HELLO completo. Enter o exit para cerrar.\n", node->id);
             }
         }
         if (descriptors[1].revents & (POLLIN | POLLHUP | POLLERR | POLLNVAL)) {
             char byte;
             ssize_t count = read(STDIN_FILENO, &byte, 1);
             if (count < 0) {
-                if (errno == EINTR) {
-                    continue;
-                }
+                if (errno == EINTR) continue;
                 return node_error(node, "leer entrada");
             }
             if (count == 0) {
-                printf("[NODE %d] Fin de entrada; cerrando\n", node->id);
-                return DSM_OK;
-            }
-            if (byte == '\n') {
-                command[command_used] = '\0';
-                if (!command_overflow && (command_used == 0 || strcmp(command, "exit") == 0)) {
-                    printf("[NODE %d] Cierre solicitado por el usuario\n", node->id);
-                    return DSM_OK;
+                puts("Fin de entrada; esperando operación pendiente antes del cierre");
+                exiting = 1;
+            } else if (byte == '\n') {
+                command_line[command_used] = '\0';
+                DSMCommand command;
+                if (command_overflow || dsm_cli_parse(command_line, &command) != DSM_OK) {
+                    printf("[NODE %d] Error: comando inválido; use help (páginas 0..255, texto 1..4095 bytes)\n", node->id);
+                } else if (command.type == CLI_EMPTY || command.type == CLI_EXIT) {
+                    printf("[NODE %d] Cierre solicitado por el usuario; esperando operación pendiente\n", node->id);
+                    exiting = 1;
+                } else if (command.type == CLI_HELP) {
+                    dsm_cli_print_help();
+                } else if (command.type == CLI_STATUS) {
+                    dsm_protocol_status(&session->protocol, command.has_page, command.page);
+                } else if (dsm_protocol_command(&session->protocol, &command) != DSM_OK) {
+                    return DSM_ERROR;
                 }
-                puts("Comando desconocido. Use Enter o exit para cerrar.");
                 command_used = 0;
                 command_overflow = 0;
-            } else if (command_used < sizeof(command) - 1) {
-                command[command_used++] = byte;
+            } else if (byte == '\0') {
+                command_overflow = 1;
+            } else if (command_used < sizeof(command_line) - 1) {
+                command_line[command_used++] = byte;
             } else {
                 command_overflow = 1;
             }
         }
+        if (session->outgoing.used) {
+            if (!send_started) send_started = now;
+            DSMStatus status = dsm_network_flush(node->peer_fd, &session->outgoing);
+            if (status == DSM_ERROR) return node_error(node, "enviar mensaje DSM");
+            if (status == DSM_OK) send_started = 0;
+        }
     }
     return DSM_OK;
+}
+
+static DSMStatus run_session(DSMNode *node)
+{
+    DSMSession *session = calloc(1, sizeof(*session));
+    if (session == NULL) return node_error(node, "reservar sesión");
+    session->node = node;
+    DSMStatus status = session_loop(session);
+    if (session->initialized) {
+        dsm_protocol_status(&session->protocol, 0, 0);
+        dsm_protocol_destroy(&session->protocol);
+    }
+    free(session);
+    return status;
 }
 
 DSMStatus dsm_node_run(DSMNode *node)

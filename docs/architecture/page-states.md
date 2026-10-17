@@ -1,47 +1,33 @@
-# Estados y reglas de una página
+# Estados y transiciones implementados
 
-| Estado local | Significado | Entrada | Salida |
-|---|---|---|---|
-| INVALID | No hay copia utilizable, aunque queden bytes viejos | Inicio N1; invalidación confirmada localmente | Instalar PAGE_DATA autorizado para lectura o escritura |
-| READ_ONLY | Copia válida de la versión confirmada; no autoriza modificar | Lectura remota de un nodo no propietario | INVALIDATE o concesión exclusiva para escribir |
-| OWNER | Copia autoritativa; es dueño en el directorio estable | Inicio N0 o transferencia de propiedad | Invalidación durante transferencia al otro nodo |
+| Estado | Significado |
+|---|---|
+| INVALID | No se permite leer, aunque existan bytes residuales. |
+| READ_ONLY | Copia válida; no se permite escribir sin transacción exclusiva. |
+| OWNER | Copia autoritativa; también necesita autorización del coordinador para modificar. |
 
-OWNER puede coexistir con READ_ONLY en el otro nodo. Por ello OWNER no equivale al
-estado exclusivo E de MESI. Exclusividad se verifica con el directorio: `valid_mask`
-contiene únicamente al dueño, además de una concesión WRITE activa. Se mantienen tres
-estados educativos y una condición derivada; no se inventa un cuarto estado redundante.
+| Operación/evento | Transición |
+|---|---|
+| Inicio | N0 OWNER; N1 INVALID. |
+| read remoto | Se preserva una instantánea, se invalida al dueño anterior, se instala OWNER en solicitante. |
+| read de READ_ONLY | Se invalida al otro poseedor y se promueve solicitante a OWNER. |
+| read-copy remoto | Dueño conserva OWNER; solicitante instala READ_ONLY. |
+| read-copy sobre copia válida | Conserva estado y versión; autorización sin transferencia de página. |
+| write | Invalida a los otros, instala/promueve OWNER en solicitante y aumenta versión tras permiso. |
+| INVALIDATE válido | OWNER o READ_ONLY pasa a INVALID antes del ACK. |
+| EOF/timeout con operación | Abortan sesión; no se declara recuperación de estado. |
 
-## Transiciones válidas
+`read` deja una copia válida única; `read-copy` permite OWNER y READ_ONLY al mismo tiempo.
+Esto cumple la migración exigida por el PDF y permite demostrar invalidación de lectores.
 
-| Desde | Evento | Hasta |
-|---|---|---|
-| INVALID | PAGE_DATA modo READ y autorización vigente | READ_ONLY |
-| INVALID | PAGE_DATA modo WRITE, luego aplicación autorizada | OWNER |
-| READ_ONLY | INVALIDATE | INVALID |
-| READ_ONLY | GRANT WRITE después de invalidar al antiguo dueño | OWNER |
-| OWNER | FETCH_PAGE para una lectura de otro nodo | OWNER |
-| OWNER | INVALIDATE para ceder propiedad, tras preservar la instantánea | INVALID |
-| OWNER | GRANT WRITE sin cambiar dueño | OWNER |
-| READ_ONLY | Lectura autorizada de la misma versión | READ_ONLY |
-| INVALID | INVALIDATE redundante en la transacción válida | INVALID |
+Invariantes en reposo:
 
-Una lectura local de OWNER también lo mantiene OWNER. En la actualización de un
-propietario con lectores, el dueño conserva OWNER y el lector pasa a INVALID.
-No existe OWNER → READ_ONLY en este diseño: la transferencia de escritura invalida
-al dueño anterior; podría leer más tarde y pasar INVALID → READ_ONLY.
-No se permite INVALID → lectura directa ni READ_ONLY → escritura directa.
+1. Existe exactamente un OWNER y coincide con el directorio de N0.
+2. Toda copia READ_ONLY tiene los mismos datos y versión que el dueño.
+3. Las escrituras solo se ejecutan con concesión y sin otras copias válidas.
+4. Ninguna lectura utiliza INVALID.
+5. El directorio cambia al completar ACK_DONE, no al iniciar la transferencia.
 
-## Invariantes comprobables
-
-1. En reposo, exactamente un OWNER por página y coincide con `directory.owner_id`.
-2. Todo READ_ONLY tiene los mismos bytes y versión que el OWNER en reposo.
-3. Para modificar: concesión WRITE vigente, destinatario único, invalidaciones
-   confirmadas y ninguna otra operación en curso.
-4. ACK de invalidación se envía después de cambiar a INVALID, nunca antes.
-5. Una copia INVALID jamás satisface una lectura, aunque su versión parezca reciente.
-6. El directorio solo confirma la nueva versión y propietario al recibir WRITE_DONE.
-
-Durante una transferencia puede haber cero OWNER y estados aún por confirmar. La
-transacción global bloquea nuevos accesos; no es una pérdida de datos porque existe
-una instantánea y no se permite continuar tras fallos de transporte. `status` muestra
-la fase pendiente y diferencia metadatos confirmados de estados locales transitorios.
+Durante la operación puede haber cero OWNER. La instantánea evita perder bytes y el
+bloqueo global impide usar ese estado intermedio para otra operación. Ante fallos se
+aborta, sin intentar reconstruir una propiedad que podría haber quedado incierta.

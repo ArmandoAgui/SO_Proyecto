@@ -1,5 +1,8 @@
 # Objetivo
 
+> Reporte histórico de la Fase 1. La implementación DSM posterior está en
+> IMPLEMENTACION_DSM.md y el README actual.
+
 Implementar exclusivamente la primera simulación funcional: dos procesos C11 en
 Linux conectados mediante TCP IPv4 sobre localhost, con intercambio textual
 HELLO/HELLO_ACK y cierre limpio. Se conservan los módulos existentes; no se

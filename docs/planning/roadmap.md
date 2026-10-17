@@ -1,5 +1,8 @@
 # Desarrollo incremental
 
+> Plan original conservado como historial. Para el estado actual, consulte
+> `IMPLEMENTACION_DSM.md`, `ENTREGA_PROYECTO10.md` y el README de la raíz.
+
 Cada fase se integra a develop solo cuando cumple sus criterios. Los archivos C
 mencionados son destinos previstos; hoy contienen únicamente stubs. Para cada fase,
 las pruebas mínimas indicadas forman su puerta de aceptación.

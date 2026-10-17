@@ -1,5 +1,8 @@
 # Comenzar hoy
 
+> Plan original conservado como historial. Para el estado actual, consulte
+> `IMPLEMENTACION_DSM.md`, `ENTREGA_PROYECTO10.md` y el README de la raíz.
+
 ## Lista ordenada
 
 1. Revisar en equipo alcance, tres estados, coordinador N0 y limitaciones. Acordar con

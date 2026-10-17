@@ -1,35 +1,13 @@
-# Plan de pruebas inicial
+# Plan y cobertura de pruebas
 
-Estado: Fase 1 de sockets probada mediante `make test` (ver `tests/README.md`).
-El resto de este documento planifica pruebas DSM futuras, aún sin implementar.
+La suite actual y resultados están en tests/README.md y RESULTADOS.md. Se ejecutan
+pruebas C locales, integración TCP, oráculo de datos, carreras controladas y sanitizers.
 
-## Capas
+Puertas actuales: build sin warnings; no leer INVALID; no escribir sin exclusividad;
+no conceder antes del ACK; migrar en read; copiar sin migrar en read-copy; rechazar
+tramas/campos incorrectos; abortar sin bloquear ante EOF/timeout; cerrar recursos.
 
-- Build: `make clean && make`, advertencias activadas y ejecución de `--help` y `make test` para Fase 1.
-- Unitarias futuras en C: memoria/límites; codec y tamaños; parser; transiciones y
-  fases con transporte simulado. No dependen de dos terminales ni de sleeps.
-- Integración futura: lanzar ambos procesos, esperar HELLO con plazo y enviar órdenes
-  sincronizadas por resultados/eventos, no por pausas arbitrarias. Usar Python estándar
-  como harness si facilita controlar stdin/stdout, sin sustituir el simulador C.
-- Manuales: demo con dos terminales y status en reposo; conservar trazas correlacionadas.
-
-La suite de integración debe fallar si falta un evento, difiere el contenido, expira el
-plazo o algún nodo termina inesperadamente. Limpiar procesos incluso si falla una aserción.
-
-## Puertas de aceptación
-
-1. Transporte: fragmentar cabecera y cuerpo, unir dos tramas, desconectar a mitad de una,
-   rechazar longitud superior a página y HELLO incompatible; comprobar envío parcial.
-2. Memoria: estados iniciales, primera/última página, rango fuera de límites, texto
-   de 4095 bytes aceptado y de 4096 rechazado; lectura INVALID prohibida.
-3. Protocolo: escenarios S01–S10 de scenarios.md; comprobar datos, versiones,
-   propietario/máscara, orden INVALIDATED → GRANT WRITE → WRITE_DONE.
-4. Concurrencia: solicitudes simultáneas producen una concesión y otra BUSY; reintento
-   posterior usa versión vigente. Retrasar ACK deliberadamente y verificar que no hay
-   escritura anticipada. Inyectar ACK con identidad/fase incorrecta: no desbloquea.
-5. Recursos: cierre, EOF y timeout sin bloqueo indefinido. Sanitizers address/undefined
-   durante integración, si el compilador los soporta; reportar herramienta y resultado.
-
-Capturar por ejecución: fecha, commit, compilador/flags, Linux, configuración, órdenes,
-salida esperada/real, estado PASS/FAIL y logs por nodo. No poner PASS sin ejecución.
-No agregar un target `make test` vacío que termine con éxito. Añadirlo con pruebas reales.
+Mejoras futuras fuera de la entrega mínima: exploración exhaustiva de interleavings,
+fuzzing prolongado de cabeceras, fallos de asignación, inyección de errno en cada syscall,
+pruebas sobre LAN y medición de latencia sin el polling del harness. No se presentan
+estas ampliaciones como pruebas ya realizadas.

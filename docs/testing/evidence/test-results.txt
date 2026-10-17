@@ -1,0 +1,45 @@
+cc -Iinclude -std=c11 -Wall -Wextra -Wpedantic -g  tests/unit/network_test.c src/network/network.c  -o build/network-test
+cc -Iinclude -std=c11 -Wall -Wextra -Wpedantic -g  tests/unit/memory_cli_test.c src/memory/memory.c src/cli/cli.c  -o build/memory-cli-test
+cc -Iinclude -std=c11 -Wall -Wextra -Wpedantic -g  tests/unit/protocol_test.c src/protocol/protocol.c src/memory/memory.c src/cli/cli.c  -o build/protocol-test
+./build/network-test
+PASS network: fragmentación, líneas juntas, EOF, límites, SIGPIPE, codec binario, cola EAGAIN y envío completo
+./build/memory-cli-test
+PASS memory/cli: límites, permisos, versiones, parser y longitud máxima
+./build/protocol-test
+[NODE 0] Error de protocolo: ACK sin transacción correspondiente
+[NODE 0] Error de protocolo: ACK fuera de fase, versión o propietario incorrecto
+[NODE 0] req=1 page=3 LOCAL_HIT authorization_required=1
+[NODE 0] req=1 page=3 GRANT_WRITE owner=0 invalidations_confirmed=1
+[NODE 0] RESULT WRITE req=1 page=3 version=1 data="nuevo"
+[NODE 0] req=1 page=3 COMMIT owner=0 version=1 valid_mask=1
+[NODE 0] req=2 page=4 LOCAL_HIT authorization_required=1
+[NODE 0] req=1 page=7 REJECT BUSY
+PASS protocol: ACK correcto antes de escribir, ACK falso rechazado, BUSY y timeout
+DSM_BINARY=/home/armandoaguilar/Desktop/SO_Proyecto/build/dsm-node python3 -m unittest discover -s tests/integration -p 'test_*.py' -v
+test_bad_binary_frames (test_dsm.DSMTest.test_bad_binary_frames) ... ok
+test_busy_with_delayed_invalidation_ack (test_dsm.DSMTest.test_busy_with_delayed_invalidation_ack) ... ok
+test_cli_errors_and_maximum_page (test_dsm.DSMTest.test_cli_errors_and_maximum_page) ... ok
+test_operation_timeout (test_dsm.DSMTest.test_operation_timeout) ... ok
+test_pdf_migration_and_invalidation (test_dsm.DSMTest.test_pdf_migration_and_invalidation) ... ok
+test_peer_dies_during_request (test_dsm.DSMTest.test_peer_dies_during_request) ... ok
+test_randomized_sequential_model (test_dsm.DSMTest.test_randomized_sequential_model) ... ok
+test_remote_writer_copy_and_existing_owner (test_dsm.DSMTest.test_remote_writer_copy_and_existing_owner) ... ok
+test_write_waits_for_remote_reader_ack (test_dsm.DSMTest.test_write_waits_for_remote_reader_ack) ... ok
+test_cancel_during_accept (test_sockets.SocketsTest.test_cancel_during_accept) ... ok
+test_cancel_during_retry (test_sockets.SocketsTest.test_cancel_during_retry) ... ok
+test_eof (test_sockets.SocketsTest.test_eof) ... ok
+test_fragmented_hello_and_premature_eof (test_sockets.SocketsTest.test_fragmented_hello_and_premature_eof) ... ok
+test_hello_timeout (test_sockets.SocketsTest.test_hello_timeout) ... ok
+test_help (test_sockets.SocketsTest.test_help) ... ok
+test_invalid_arguments (test_sockets.SocketsTest.test_invalid_arguments) ... ok
+test_invalid_hello (test_sockets.SocketsTest.test_invalid_hello) ... ok
+test_node0_first_exact_commands_exit (test_sockets.SocketsTest.test_node0_first_exact_commands_exit) ... ok
+test_node1_first_enter (test_sockets.SocketsTest.test_node1_first_enter) ... ok
+test_occupied_port (test_sockets.SocketsTest.test_occupied_port) ... ok
+test_retry_exhaustion (test_sockets.SocketsTest.test_retry_exhaustion) ... ok
+test_signal_and_peer_close (test_sockets.SocketsTest.test_signal_and_peer_close) ... ok
+
+----------------------------------------------------------------------
+Ran 22 tests in 48.166s
+
+OK

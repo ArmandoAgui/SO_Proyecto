@@ -15,3 +15,12 @@ core.*
 *.out
 *.toc
 *.synctex.gz
+
+# Python test cache
+__pycache__/
+*.pyc
+
+# LaTeX intermediate files
+*.nav
+*.snm
+*.vrb

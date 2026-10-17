@@ -1,6 +1,7 @@
 # Estructura preliminar del artículo IEEE
 
-No es un paper completo. Usar posteriormente la plantilla que exija la asignatura.
+Esquema histórico. El artículo implementado está en paper.tex (IEEEtran); se genera
+con make docs. Revisar el formato y los datos personales antes de entregar.
 
 | Sección | Información que se debe recopilar durante el desarrollo |
 |---|---|

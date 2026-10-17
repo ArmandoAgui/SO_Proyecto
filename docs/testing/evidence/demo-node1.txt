@@ -1,0 +1,44 @@
+[NODE 1] Iniciando nodo
+[NODE 1] Escuchando en 127.0.0.1:33611
+[NODE 1] Esperando conexión de Nodo 0
+[NODE 1] Conexión recibida y aceptada desde 127.0.0.1
+[NODE 1] Mensaje recibido: HELLO 0
+[NODE 1] Mensaje enviado: HELLO_ACK 1
+[NODE 1] Intercambio HELLO completo
+[NODE 1] SEND HELLO_CONFIG origin=1 req=0 page=4294967295 version=0 flags=0 bytes=12
+[NODE 1] RECV HELLO_CONFIG origin=0 req=0 page=4294967295 version=0 flags=0 bytes=12
+[NODE 1] DSM_READY pages=256 page_bytes=4096
+Comandos: read <0..255>             Migra la propiedad para leer
+          read-copy <0..255>        Obtiene/conserva copia de solo lectura
+          write <0..255> <texto>    Exclusividad y reemplazo (1..4095 bytes)
+          status [0..255]           Estado local y directorio en N0
+          help | exit               Ayuda / cierre ordenado
+Texto literal: sin interpretar comillas ni comandos de shell. Enter cierra.
+[NODE 1] req=1 page=3 PAGE_FAULT simulated=1
+[NODE 1] SEND READ_REQUEST origin=1 req=1 page=3 version=0 flags=1 bytes=0
+[NODE 1] RECV PAGE_DATA origin=1 req=1 page=3 version=1 flags=1 bytes=4096
+[NODE 1] req=1 page=3 PAGE_INSTALLED bytes=4096 state=OWNER
+[NODE 1] RESULT READ req=1 page=3 version=1 data="hola desde N0"
+[NODE 1] SEND ACK origin=1 req=1 page=3 version=1 flags=2 bytes=0
+[NODE 1] STATUS pending=0 transaction=0 faults=1 pages_sent=0 pages_received=1 invalidations=0 commits=0
+[NODE 1] PAGE page=3 state=OWNER version=1 owner_hint=1
+[NODE 1] RECV FETCH_PAGE origin=0 req=2 page=3 version=1 flags=0 bytes=0
+[NODE 1] SEND PAGE_DATA origin=0 req=2 page=3 version=1 flags=0 bytes=4096
+[NODE 1] req=2 page=3 LOCAL_HIT authorization_required=1
+[NODE 1] SEND INVALIDATE origin=1 req=2 page=3 version=1 flags=3 bytes=0
+[NODE 1] RECV GRANT origin=1 req=2 page=3 version=1 flags=3 bytes=0
+[NODE 1] RESULT WRITE req=2 page=3 version=2 data="actualizado por N1"
+[NODE 1] SEND ACK origin=1 req=2 page=3 version=2 flags=2 bytes=0
+[NODE 1] RECV FETCH_PAGE origin=0 req=3 page=3 version=2 flags=0 bytes=0
+[NODE 1] SEND PAGE_DATA origin=0 req=3 page=3 version=2 flags=0 bytes=4096
+[NODE 1] RECV INVALIDATE origin=0 req=3 page=3 version=2 flags=1 bytes=0
+[NODE 1] req=3 page=3 INVALIDATE_APPLIED state=INVALID
+[NODE 1] SEND ACK origin=0 req=3 page=3 version=2 flags=1 bytes=0
+[NODE 1] STATUS pending=0 transaction=0 faults=1 pages_sent=2 pages_received=1 invalidations=1 commits=0
+[NODE 1] PAGE page=3 state=INVALID version=2 owner_hint=1
+[NODE 1] Peer desconectado; conexión cerrada por el peer
+[NODE 1] STATUS pending=0 transaction=0 faults=1 pages_sent=2 pages_received=1 invalidations=1 commits=0
+[NODE 1] PAGE page=3 state=INVALID version=2 owner_hint=1
+[NODE 1] MEMORY bytes=1048576 INVALID=256 READ_ONLY=0 OWNER=0
+[NODE 1] Conexión cerrada
+[NODE 1] Socket servidor cerrado. Nodo finalizado

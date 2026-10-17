@@ -1,5 +1,8 @@
 # Backlog inicial para GitHub
 
+> Plan original conservado como historial. Para el estado actual, consulte
+> `IMPLEMENTACION_DSM.md`, `ENTREGA_PROYECTO10.md` y el README de la raíz.
+
 Estos son borradores locales; **no se han creado issues en GitHub**. I1–I5 se definen
 en team.md. Numeración G01–G15 interna, independiente de los números remotos futuros.
 

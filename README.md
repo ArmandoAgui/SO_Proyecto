@@ -1,148 +1,119 @@
 # Mini-simulador DSM a nivel de página
 
-Proyecto 10 — Sistemas Operativos. Equipo de cinco integrantes.
+Proyecto 10 de Sistemas Operativos. C11 en Linux/Pop!_OS, dos procesos independientes,
+TCP IPv4 sobre `127.0.0.1`, sin hilos ni bibliotecas externas de ejecución.
 
-## Estado actual
+**Implementado:** 1 MiB por nodo, 256 páginas de 4096 bytes, migración para lectura,
+copias de solo lectura opcionales, propiedad exclusiva para escritura, invalidaciones
+confirmadas, versiones, directorio central, CLI, pruebas y trazas. El fallo de página
+se simula al comprobar metadatos; no se intercepta SIGSEGV ni se modifica el kernel.
 
-**Fase 1 funcional:** dos procesos C independientes se conectan por una única conexión
-TCP IPv4 sobre `127.0.0.1`, intercambian `HELLO 0` / `HELLO_ACK 1` y mantienen la
-conexión hasta el cierre. `main`, `node` y `network` están implementados para esta fase;
-`memory`, `protocol` y `cli` siguen como stubs.
+Equipo: Armando, Daniel, Guillermo, Daniel y Mauricio. Catedrático: David Garcia Cerna.
+Faltan apellidos, universidad y sección para personalizar los documentos definitivos.
 
-Todavía no existen páginas, DSM real, READ_REQUEST, WRITE_REQUEST, PAGE_DATA,
-INVALIDATE, consistencia ni transferencia de propiedad. El resto del diseño describe
-trabajo futuro. Ver el [reporte de Fase 1](docs/planning/FASE1_SOCKETS.md).
+## Empezar en Pop!_OS
 
-## Alcance mínimo viable futuro
-
-- C11 sobre Linux; dos procesos independientes (nodos 0 y 1).
-- Una conexión TCP IPv4 persistente, inicialmente sobre `127.0.0.1`.
-- Cada proceso reserva un arreglo contiguo de 1 MiB: 256 páginas lógicas de 4096 bytes.
-  Son parámetros de diseño comunes a ambos nodos, no el tamaño de página exigido por Linux.
-- Inicio: nodo 0 tiene todas las páginas inicializadas en cero y es su propietario;
-  nodo 1 tiene todas las páginas INVALID. No se puede acceder a esos bytes inválidos.
-- Acceso explícito mediante CLI y funciones DSM. El fallo de página se **simula** al
-  detectar INVALID; no se interceptan accesos de C, SIGSEGV ni fallos del kernel.
-- Lecturas remotas transfieren páginas completas y dejan copias de lectura.
-- Escrituras obtienen exclusividad, invalidan otras copias y pueden transferir propiedad.
-- `status` y registros muestran mensajes, fallos, estados, propietario y versiones.
-- Coordinación central en el nodo 0; propiedad de datos móvil. Una operación de memoria
-  global en curso, con órdenes concurrentes respondidas con BUSY para reintento manual.
-
-Se elige TCP frente a UDP para no implementar retransmisión de paquetes. TCP es un
-flujo sin fronteras de mensajes: el transporte debe delimitar y acumular tramas.
-Fuente: [Linux tcp(7)](https://man7.org/linux/man-pages/man7/tcp.7.html).
-
-## Decisión de consistencia propuesta (futura)
-
-Todas las lecturas y escrituras, incluso sobre copias locales, piden autorización al
-coordinador. Una lectura local evita transferir datos, pero el nodo 1 todavía intercambia
-mensajes de control. Este costo permite ordenar globalmente las operaciones sin hilos,
-locks distribuidos ni un directorio replicado. El bucle de eventos permanece atendiendo
-la red mientras una orden de CLI espera su respuesta.
-
-OWNER significa dueño de la copia autorizada; **no es permiso permanente para escribir**:
-si hay otro lector debe invalidarse y confirmar antes de conceder la escritura.
-Ver [estados](docs/architecture/page-states.md) y [protocolo](docs/architecture/protocol.md).
-
-## Cuándo existe el primer MVP
-
-Con ambos procesos conectados y sin fallos de red, debe poder repetirse:
-
-1. N0 escribe `hola` en página 3; N0=OWNER, N1=INVALID.
-2. N1 lee página 3: fallo simulado, transferencia completa, obtiene `hola`;
-   N0=OWNER y N1=READ_ONLY, misma versión.
-3. N0 escribe `nuevo`: N1 confirma invalidación **antes** de la escritura.
-4. N1 vuelve a leer: nuevo fallo y obtiene `nuevo`.
-5. N1 escribe `adios`: N0 queda INVALID y N1 pasa a OWNER.
-6. N0 lee y obtiene `adios`; N0=READ_ONLY y N1=OWNER.
-7. `status` en ambas terminales y las trazas concuerdan con el directorio de N0.
-8. Pasan los escenarios de coherencia, límites, cierre y órdenes simultáneas descritos
-   en el [plan de pruebas](docs/testing/test-plan.md), sin doble propietario estable.
-
-Una conexión TCP o una lectura remota sola es un hito parcial; no es el MVP completo.
-
-## Ruta de lectura y trabajo
-
-- [Arquitectura y módulos](docs/architecture/architecture.md)
-- [Estructuras de datos propuestas](docs/architecture/data-model.md)
-- [Protocolo y flujos A–E](docs/architecture/protocol.md)
-- [CLI](docs/architecture/cli.md)
-- [Fases 0–10](docs/planning/roadmap.md)
-- [Reparto entre cinco integrantes](docs/planning/team.md)
-- [Issues preparados para GitHub](docs/planning/issues.md)
-- [Primeras tareas y árbol del repositorio](docs/planning/start-today.md)
-- [Git y contribuciones](CONTRIBUTING.md)
-- [Esquema IEEE](docs/ieee/outline.md)
-
-## Fuera de alcance inicial
-
-Más de dos nodos, tolerancia a caídas, reconexión con recuperación, swapping, reemplazo
-LRU, mmap/mprotect, multiprocesamiento interno, interfaz gráfica, descubrimiento,
-consistencia relajada y optimizaciones de rendimiento. No simular latencia artificial
-antes de tener mediciones reales. El nodo 0 es un punto único de fallo aceptado.
-
-## Compilar y ejecutar la Fase 1
-
-Requisitos: Linux, Make y compilador compatible con C11 (GCC o Clang). El ejecutable
-solo usa APIs Linux/POSIX, sin bibliotecas externas ni hilos. Python 3 es necesario
-únicamente para las pruebas de integración.
+En el equipo de desarrollo ya están instalados GCC, Make, Python 3 y LaTeX. Para
+compilar y ejecutar solo se requieren GCC/Clang y Make. Python 3 se usa en pruebas,
+demo automática y empaquetado. No hace falta Docker, máquinas virtuales, MPI ni sudo.
 
 ```sh
-make clean
 make
-./build/dsm-node --help
 ```
 
-Abre dos terminales en la raíz del repositorio. Terminal 1:
+Terminal 1, desde la raíz del repositorio:
 
 ```sh
 ./build/dsm-node --id 0 --port 5000 --peer-port 5001
 ```
 
-Terminal 2:
+Terminal 2, en la misma carpeta:
 
 ```sh
 ./build/dsm-node --id 1 --port 5001 --peer-port 5000
 ```
 
-Ambos escuchan. Solo N0 conecta y N1 acepta, evitando dos conexiones independientes.
-Puedes iniciar cualquiera primero: N0 intenta hasta 30 veces, con pausas de 1 segundo
-si el peer todavía no escucha; N1 espera hasta recibir conexión o una señal de cierre.
-Los IDs válidos son 0 y 1; los puertos deben ser distintos y estar entre 1 y 65535.
-Cada `--peer-port` debe coincidir con el `--port` del otro proceso.
+Ambos escuchan; N0 conecta y N1 acepta una sola conexión bidireccional. Cualquiera
+puede iniciar primero. N0 hace hasta 30 intentos con pausas de 1 s. Espera a ver
+`DSM_READY` en ambos antes de escribir comandos. Los puertos deben estar libres y
+el peer-port de cada nodo debe coincidir con el port del otro.
 
-Resultado esperado (algunas líneas):
+## Demo del documento de la asignatura
 
-```text
-[NODE 0] Escuchando en 127.0.0.1:5000
-[NODE 0] Conexión establecida con Nodo 1
-[NODE 0] Mensaje enviado: HELLO 0
-[NODE 0] Mensaje recibido: HELLO_ACK 1
-[NODE 0] Intercambio HELLO completo. Enter o exit para cerrar.
+Ejecuta **una línea a la vez**, esperando su resultado, en la terminal indicada:
 
-[NODE 1] Escuchando en 127.0.0.1:5001
-[NODE 1] Conexión recibida y aceptada desde 127.0.0.1
-[NODE 1] Mensaje recibido: HELLO 0
-[NODE 1] Mensaje enviado: HELLO_ACK 1
-[NODE 1] Intercambio HELLO completo. Enter o exit para cerrar.
-```
+| Paso | Terminal | Comando | Qué demuestra |
+|---|---|---|---|
+| 1 | N0 | `write 3 hola desde N0` | N0 posee la página y escribe versión 1. |
+| 2 | N1 | `read 3` | Fallo simulado, transferencia de 4096 bytes y migración N0 → N1. |
+| 3 | N0 | `status 3` | Copia INVALID; directorio con propietario 1. |
+| 4 | N1 | `status 3` | Copia OWNER, versión 1. |
+| 5 | N0 | `read-copy 3` | Copia READ_ONLY; N1 conserva propiedad. |
+| 6 | N1 | `write 3 actualizado por N1` | Envía INVALIDATE a N0; N0 invalida antes de conceder la escritura. |
+| 7 | N0 | `status 3` | La copia de lectura vuelve a INVALID. |
+| 8 | N0 | `read 3` | Nuevo fallo; obtiene el texto actualizado y recupera la propiedad. |
 
-La conexión permanece abierta tras el intercambio. Pulsa Enter o escribe `exit`
-seguido de Enter en cualquiera de las terminales: ese nodo cierra sus sockets y el
-otro detecta EOF, informa `Peer desconectado` y también finaliza. EOF en stdin,
-Ctrl+C y SIGTERM permiten cerrar; durante conexión/aceptación usa Ctrl+C.
-Sin actividad durante el HELLO por 10 segundos, la sesión termina con error.
-Un puerto ocupado o un mensaje inválido también genera un error comprensible y
-un código de salida distinto de cero. No hay reconexión automática tras una sesión.
+`read` migra para cumplir el apartado a–c de la guía. `read-copy` es una operación
+separada que permite demostrar la invalidación de lectores prevista en esa misma
+guía. No confundir ambas: solo `read-copy` conserva una copia en el dueño anterior.
+
+Busca `PAGE_FAULT`, `PAGE_DATA`, `INVALIDATE_APPLIED`, `GRANT_WRITE`, `COMMIT` y
+`OWNER_CHANGED`. Al invalidar una copia de N1, N0 envía INVALIDATE y espera ACK.
+Al invalidar una copia local de N0, el coordinador aplica la invalidación directamente;
+si N1 era dueño y quiere escribir, envía INVALIDATE como solicitud de exclusividad.
+
+## Comandos
+
+| Orden | Efecto |
+|---|---|
+| `read <página>` | Lee y deja un único dueño; migra propiedad si hace falta. |
+| `read-copy <página>` | Lee sin migrar, conservando una copia de lectura si no es dueño. |
+| `write <página> <texto>` | Obtiene exclusividad y reemplaza toda la página. |
+| `status [página]` | Estados/versiones locales y contadores; N0 también muestra directorio. |
+| `help` | Ayuda de comandos. |
+| `exit` o Enter | Espera la operación en curso, cierra y libera recursos. |
+
+Páginas 0–255. Texto de 1 a 4095 bytes, con espacios, sin interpretación de comillas
+ni shell. Una línea inválida no modifica memoria. Cada nodo admite una solicitud local
+pendiente. N0 ordena una operación global a la vez; si otra llega durante ella, devuelve
+BUSY y se reintenta manualmente. `help` y `status` siguen disponibles mientras se espera.
+
+EOF en stdin solicita cierre; Ctrl+C/SIGTERM abortan la sesión y liberan recursos.
+El peer termina al detectar cierre. Un fallo a mitad de operación **aborta** la sesión;
+no se promete recuperación de propiedad. Reinicia ambos nodos para empezar de cero.
+
+## Verificar y preparar la entrega
 
 ```sh
-make test   # Pruebas C de transporte y 13 pruebas de integración Python
+make test       # Tres ejecutables de pruebas C + 22 pruebas de integración (~50 s)
+make sanitize   # AddressSanitizer/UndefinedBehaviorSanitizer + nueve pruebas DSM
+make demo       # Repite y verifica la demo; guarda evidencia real
+make docs       # Artículo IEEE y presentación PDF (requiere LaTeX)
+make package    # Fuentes y PDFs en build/entrega/proyecto10-dsm.zip
 make help
-make run ARGS='--id 0 --port 5000 --peer-port 5001'
-make clean
 ```
 
-Las pruebas usan 5000/5001 para verificar los comandos exactos; esos puertos deben
-estar libres. Las demás pruebas eligen puertos temporales. `build/` está ignorado
-por Git. Detalles de cobertura en [tests/README.md](tests/README.md).
+`make test` utiliza 5000/5001 en un caso: cierra la demo manual antes de lanzarlo.
+Los demás escenarios usan puertos efímeros. `make clean` elimina build, incluidos
+PDFs y ZIP; `make docs` y `make package` los generan de nuevo.
+
+- [Guía sencilla: cómo funciona](docs/GUIA_SENCILLA.md).
+- [Requisitos del PDF y pendientes de entrega](docs/planning/ENTREGA_PROYECTO10.md).
+- [Arquitectura](docs/architecture/architecture.md), [protocolo](docs/architecture/protocol.md),
+  [datos](docs/architecture/data-model.md), [estados](docs/architecture/page-states.md).
+- [Guion de demo/video](demo/README.md) y [presentación](presentation/README.md).
+- [Artículo IEEE](docs/ieee/paper.tex) y [fuentes verificadas](docs/research/FUENTES.md).
+- [Pruebas y resultados](docs/testing/RESULTADOS.md).
+- [Reporte de implementación](docs/planning/IMPLEMENTACION_DSM.md).
+
+## Límites
+
+Dos nodos, loopback, memoria volátil, una operación global activa y páginas completas.
+Sin acceso transparente mediante punteros, mmap/mprotect, señales de fallo reales,
+recuperación, persistencia, autenticación, reconexión ni escalabilidad multinodo.
+La serialización facilita justificar el orden de accesos completados durante una sesión
+sin fallos; las pruebas aportan evidencia, no una verificación formal exhaustiva.
+
+El código y los materiales están preparados para revisión. El equipo debe completar
+datos personales, estudiar y grabar la explicación, revisar los documentos y entregar
+los archivos en ECampus. No se ha grabado ni enviado un video automáticamente.

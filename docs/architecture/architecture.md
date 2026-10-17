@@ -1,99 +1,78 @@
-# Arquitectura: Fase 1 y diseño futuro
+# Arquitectura implementada
 
-## Implementado en Fase 1
-
-Ambos procesos crean un servidor TCP IPv4 en loopback. **N0 conecta a N1; N1 acepta**.
-Esta decisión sustituye el arranque anteriormente propuesto (N0 escucha y N1 conecta).
-N0 reintenta ECONNREFUSED hasta 30 intentos separados por 1 segundo; ambos órdenes de
-arranque están soportados. Solo se acepta una conexión por sesión y no hay reconexión.
-El socket servidor permanece abierto hasta el cierre; no se aceptan peers adicionales.
+Dos procesos C11 en Linux, mismos binarios con ID 0/1. Ambos escuchan en loopback;
+solo N0 conecta al puerto de N1, con 30 intentos y pausas de 1 s ante ECONNREFUSED.
+Una conexión TCP bidireccional sirve para control y datos. Se conserva el saludo textual
+de Fase 1 y después se intercambia HELLO_CONFIG binario con identidad y geometría.
 
 ```text
-N0: servidor 127.0.0.1:5000          N1: servidor 127.0.0.1:5001
-    cliente ---------------------->    accept
-            una conexión TCP bidireccional
-            HELLO 0 -------------->
-                    <-------------- HELLO_ACK 1
+Terminal N0 -> CLI -> protocolo/coordinador -> memoria local N0
+                          | directorio
+                          | transacción global
+                          v
+                     cola TCP N0 <======> cola TCP N1
+                                              |
+                                         protocolo N1
+                                         /          \
+                                    CLI N1       memoria N1
 ```
 
-`DSMNode` guarda ID, puertos y los dos descriptores. `main` valida argumentos;
-`node` coordina arranque, HELLO, entrada mínima y cierre; `network` gestiona sockets,
-envío completo y recepción incremental de líneas de hasta 127 bytes (sin `\n`).
-Se rechazan NUL, líneas demasiado largas, EOF parcial y mensajes HELLO inesperados.
-`poll()` atiende la red y, después del HELLO, stdin; no hay hilos. La recepción usa
-MSG_DONTWAIT y conserva líneas parciales; no bloquea el bucle esperando una línea.
-El envío es bloqueante: suficiente para los mensajes HELLO pequeños de esta fase.
-HELLO vence tras 10 segundos sin actividad de red; Ctrl+C/SIGTERM cierran recursos.
-`memory`, `protocol` y `cli` permanecen como stubs, sin inicializarse desde `node`.
-No hay memoria DSM ni validación de geometría de páginas o versión de protocolo.
+| Módulo | Responsabilidad implementada |
+|---|---|
+| main | Validación de configuración y ayuda de arranque. |
+| node | Recursos, señales, conexión, eventos, entrada incremental, plazos y cierre. |
+| network | Sockets, saludo textual, codec binario, recepción incremental y cola parcial. |
+| memory | Arreglo contiguo y operaciones locales comprobadas, sin sockets. |
+| protocol | Directorio autoritativo N0, transacción, permisos, versiones, BUSY y trazas. |
+| cli | Parser sin ejecución de shell y salida de datos con escapes. |
 
-Ver [reporte y pruebas](../planning/FASE1_SOCKETS.md).
+Cada proceso reserva 1 MiB: 256 páginas de 4096 bytes. No se realiza mapeo compartido
+entre procesos. El contexto de configuración DSMNode sigue separado del contexto de
+sesión, que agrupa protocolo y buffers. El directorio se reserva como parte del contexto
+en ambos nodos para simplificar C, pero **solo es autoritativo y utilizado en N0**.
 
-## Modelo futuro (sin implementar)
+## Coordinación y ejecución
 
-Dos ejecutables del mismo programa con `--id 0` o `--id 1`. Ambos escuchan; N0 conecta a N1.
-Una sola conexión TCP bidireccional sirve para control y páginas. Identidad, versión
-del protocolo, número de páginas y tamaño de página se validan con HELLO antes de
-aceptar comandos de memoria. No se necesitan cinco servicios ni un proceso coordinador
-adicional: el rol coordinador reside en N0, aunque N1 sea dueño de los datos.
+Un único hilo por proceso. poll atiende socket y stdin (después de negociar geometría).
+Se reciben hasta 32 mensajes por iteración para no monopolizar el bucle. Tanto recibir
+tramas como vaciar la cola usan MSG_DONTWAIT, conservando los offsets ante EAGAIN.
+La entrada de terminal se acumula hasta newline; no se llama fgets bloqueando la red.
 
-```mermaid
-flowchart LR
-    C0[CLI nodo 0] --> P0[Protocolo y coordinador]
-    P0 --> M0[Memoria nodo 0]
-    P0 <--> T0[Transporte TCP]
-    T0 <--> T1[Transporte TCP]
-    T1 <--> P1[Protocolo nodo 1]
-    C1[CLI nodo 1] --> P1
-    P1 --> M1[Memoria nodo 1]
-```
+Todas las lecturas/escrituras, incluso los hits locales, pasan por N0. Una transacción
+está IDLE, FETCHING, INVALIDATING o WAIT_DONE. La instantánea de 4096 bytes conserva
+los datos antes de invalidar al dueño. No se acepta otra operación global hasta ACK_DONE;
+se responde BUSY sin reintento automático. Un nodo solo tiene una petición local pendiente.
 
-La lectura remota replica datos; la escritura migra la propiedad. No se afirma que
-leer siempre cambie al propietario. El directorio autoritativo está exclusivamente
-en N0; `owner_hint` de N1 solo sirve para mostrar información, nunca para conceder permisos.
+La guía del docente exige migración en lectura: `read` cede la propiedad e invalida a
+los demás. `read-copy` deja una copia READ_ONLY y mantiene al dueño. Es una corrección
+respecto del diseño inicial que replicaba todas las lecturas. No es una reescritura de
+la arquitectura: se mantienen módulos, coordenador N0 y una conexión.
 
-## Módulos y contratos propuestos
+## Escrituras e invalidaciones
 
-| Módulo | Responsabilidad | Archivos futuros | Interfaz orientativa |
-|---|---|---|---|
-| node | Configuración, arranque, recursos, bucle de eventos y cierre | src/main.c, src/node/node.c, include/dsm/node.h | node_init, node_run, node_destroy |
-| network | socket, conexión, tramas, buffers parciales y errores de transporte | src/network/network.c, include/dsm/network.h | network_listen, network_connect, network_receive, network_queue_send |
-| memory | Arreglo local, metadatos, límites, instalación e invalidación | src/memory/memory.c, include/dsm/memory.h | memory_init, memory_install, memory_invalidate, memory_read, memory_write |
-| protocol | Directorio, autorización, exclusividad, máquina de transacción | src/protocol/protocol.c, include/dsm/protocol.h | protocol_request_read, protocol_request_write, protocol_on_message |
-| cli | Análisis de órdenes y presentación de resultados | src/cli/cli.c, include/dsm/cli.h | cli_parse, cli_print_status, cli_print_help |
+Antes de conceder WRITE se invalidan todos los holders distintos del solicitante.
+Si el holder es N1, N0 manda INVALIDATE y espera ACK_INVALIDATED. Si es N0, aplica
+la invalidación local antes de GRANT. Cuando N1 ya es dueño y escribe, manda INVALIDATE
+como solicitud de exclusividad; N0 la procesa como transacción de escritura e invalida
+su copia, si existe. Así la segunda parte de la demo muestra N1 → N0 INVALIDATE real.
+N1 no modifica nada por enviar esa petición: espera la concesión.
 
-`memory_write` recibe autorización de la transacción activa; comprobar solo OWNER
-es insuficiente. Protocol controla la política, memory aplica operaciones locales
-válidas y comprueba sus precondiciones. No exponer un puntero escribible a la CLI.
-Un encabezado común `include/dsm/types.h` contendrá tipos compartidos, sin duplicarlos.
+## Fallos y cierre
 
-## Ejecución DSM futura sin hilos
+Timeout absoluto de 10 s desde que empieza el saludo hasta recibir HELLO_CONFIG.
+Plazo de 5 s para petición local, transacción global, trama incompleta y cola sin vaciar;
+los plazos no se renuevan por recibir unos cuantos bytes. La precisión depende del
+poll de 100 ms y de la planificación de Linux.
 
-Recomendación: un bucle `poll()` para stdin y socket en cada proceso. Un comando en
-espera no bloquea el despacho de FETCH_PAGE, INVALIDATE ni ACK. Un solo acceso global
-activo; N0 devuelve ERROR(BUSY) a nuevos accesos y la CLI permite reintentarlos.
-N0 también tramita su CLI mediante el mismo despachador, sin enviarse TCP a sí mismo.
-Esto evita dos rutas con reglas de consistencia diferentes.
-
-La Fase 1 ya tiene recepción incremental de líneas. Antes de integrar DSM, adaptar
-el framing al formato binario futuro y agregar una cola de envío con socket no bloqueante. `poll()` seguido de un `recv_all` bloqueante podría congelar el
-bucle ante una trama incompleta y no es el diseño final.
+exit, Enter y EOF esperan a la operación en curso y vacían la cola. SIGINT/SIGTERM
+solicitan aborto. EOF de red en reposo finaliza normalmente; durante transacción o
+trama incompleta es error. No hay rollback ni recuperación: ambos reinician desde cero.
+Cada socket fallido al crear/conectar se cierra; los recursos de sesión se liberan
+al salir. MSG_NOSIGNAL impide que un EPIPE termine el proceso sin tratamiento.
 
 ## Directorios
 
-| Directorio | Contenido |
-|---|---|
-| src/ | Implementaciones C separadas por responsabilidad; main futuro conecta los módulos |
-| include/dsm/ | Encabezados públicos internos al proyecto y tipos comunes |
-| tests/unit/ | Pruebas de memoria, serialización, parser y transiciones sin dos procesos |
-| tests/integration/ | Pruebas con ambos nodos y verificación de trazas/resultados |
-| docs/architecture/ | Contratos de módulos, estados, protocolo, tipos y CLI |
-| docs/research/ | Notas teóricas breves, fuentes y relación con decisiones del simulador |
-| docs/testing/ | Plan, escenarios y evidencia de ejecución |
-| docs/planning/ | Fases, responsabilidades, issues y orden inicial |
-| docs/ieee/ | Esquema y posteriormente fuentes del artículo, sin resultados inventados |
-| demo/ | Guion reproducible, órdenes y posteriormente registros seleccionados |
-| presentation/ | Esquema de exposición y posteriormente diapositivas |
-
-Los `.gitkeep` conservan carpetas vacías. No son módulos implementados. No agregar
-bibliotecas de terceros por adelantado; Make, compilador C y utilidades Linux bastan.
+src e include/dsm contienen código; tests, sus comprobaciones; tools, demo/empaquetado;
+docs/architecture, los contratos actuales; docs/testing/evidence, trazas reales;
+docs/ieee y presentation, documentos editables; build/entrega, PDFs/ZIP generados.
+FASE1_SOCKETS.md y la planificación previa conservan el historial, no el estado actual.

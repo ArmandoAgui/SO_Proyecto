@@ -82,6 +82,49 @@ int main(void)
     int status;
     assert(waitpid(child, &status, 0) == child);
     assert(WIFEXITED(status) && WEXITSTATUS(status) == 0);
-    puts("PASS network: fragmentación, líneas juntas, EOF, límites, SIGPIPE y envío completo");
+    /* Binary framing: split header/body, then two frames together. */
+    assert(socketpair(AF_UNIX, SOCK_STREAM, 0, pair) == 0);
+    DSMSendBuffer wire = {0};
+    DSMReceiveBuffer incoming = {0};
+    DSMMessage message = {.type = MSG_PAGE_DATA, .origin_id = 1, .request_id = 7,
+        .page_id = 255, .owner_id = 1, .flags = ACCESS_WRITE, .payload_len = DSM_PAGE_BYTES};
+    for (size_t i = 0; i < DSM_PAGE_BYTES; ++i) message.payload[i] = (unsigned char)i;
+    assert(dsm_network_queue(&wire, &message) == DSM_OK);
+    DSMMessage grant = {.type = MSG_GRANT, .origin_id = 1, .request_id = 8,
+        .page_id = 0, .owner_id = 1, .flags = ACCESS_READ};
+    assert(dsm_network_queue(&wire, &grant) == DSM_OK);
+    DSMMessage decoded = {0};
+    assert(write(pair[0], wire.data, 7) == 7);
+    assert(dsm_network_receive_message(pair[1], &incoming, &decoded) == DSM_AGAIN);
+    assert(write(pair[0], wire.data + 7, 64) == 64);
+    assert(dsm_network_receive_message(pair[1], &incoming, &decoded) == DSM_AGAIN);
+    assert(write(pair[0], wire.data + 71, wire.used - 71) == (ssize_t)(wire.used - 71));
+    assert(dsm_network_receive_message(pair[1], &incoming, &decoded) == DSM_OK);
+    assert(decoded.page_id == 255 && decoded.request_id == 7);
+    assert(memcmp(decoded.payload, message.payload, DSM_PAGE_BYTES) == 0);
+    assert(dsm_network_receive_message(pair[1], &incoming, &decoded) == DSM_OK);
+    assert(decoded.type == MSG_GRANT && decoded.request_id == 8);
+    dsm_network_close(&pair[0]); dsm_network_close(&pair[1]);
+
+    /* The output queue must retain progress across EAGAIN. */
+    assert(socketpair(AF_UNIX, SOCK_STREAM, 0, pair) == 0);
+    assert(setsockopt(pair[0], SOL_SOCKET, SO_SNDBUF, &small_buffer, sizeof(small_buffer)) == 0);
+    memset(&wire, 0, sizeof(wire));
+    memset(&incoming, 0, sizeof(incoming));
+    for (int i = 0; i < 5; ++i) assert(dsm_network_queue(&wire, &message) == DSM_OK);
+    assert(dsm_network_flush(pair[0], &wire) == DSM_AGAIN);
+    int received = 0;
+    for (int attempt = 0; attempt < 100 && received < 5; ++attempt) {
+        DSMStatus result = dsm_network_receive_message(pair[1], &incoming, &decoded);
+        if (result == DSM_OK) {
+            assert(memcmp(decoded.payload, message.payload, DSM_PAGE_BYTES) == 0);
+            received++;
+        } else assert(result == DSM_AGAIN);
+        assert(dsm_network_flush(pair[0], &wire) != DSM_ERROR);
+    }
+    assert(received == 5 && wire.used == 0);
+    dsm_network_close(&pair[0]); dsm_network_close(&pair[1]);
+
+    puts("PASS network: fragmentación, líneas juntas, EOF, límites, SIGPIPE, codec binario, cola EAGAIN y envío completo");
     return 0;
 }

@@ -11,7 +11,7 @@ static void print_help(const char *program)
     puts("Dos procesos en 127.0.0.1: nodo 0 conecta; nodo 1 acepta.");
     puts("Ejemplo nodo 0: --id 0 --port 5000 --peer-port 5001");
     puts("Ejemplo nodo 1: --id 1 --port 5001 --peer-port 5000");
-    puts("Cierre: Enter, exit, EOF o Ctrl+C. Ayuda: --help.");
+    puts("DSM: read, read-copy, write, status, help. Cierre: Enter, exit, EOF o Ctrl+C.");
 }
 
 static int parse_number(const char *text, int maximum, int *value)

@@ -1,14 +1,14 @@
-# Coherencia y consistencia — nota inicial
+# Coherencia y consistencia
 
-Coherencia de una página: las copias válidas no discrepan y escribir requiere invalidar
-las otras copias. Consistencia: qué orden de accesos y valores observados permite el
-sistema, incluso entre páginas distintas. No son sinónimos.
+Coherencia: las copias válidas de una página no divergen en reposo; modificar requiere
+exclusividad e invalidar las demás. Consistencia secuencial: debe poder explicarse la
+ejecución mediante un orden de accesos compatible con el orden de cada participante.
+La referencia original de Lamport está en FUENTES.md.
 
-Nuestra propuesta ordena todos los accesos mediante N0 y no concede otro hasta recibir
-la finalización del anterior. Esa serialización facilita justificar las observaciones
-sin implementar un protocolo concurrente descentralizado. Es una decisión de diseño
-pendiente de validar mediante código y pruebas, no un resultado ya demostrado.
+El simulador ordena todos los accesos en N0. No admite uno nuevo hasta ACK_DONE del
+anterior y los conflictos reciben BUSY. Ni siquiera un OWNER modifica por fuera de
+esa autorización. Las versiones aumentan al escribir, no al copiar o migrar.
 
-Lectura teórica inicial: Adve y Gharachorloo, *Shared Memory Consistency Models: A Tutorial*,
-Computer 29(12), 1996. [Referencia disponible en CMU](https://www.cs.cmu.edu/afs/cs/academic/class/15740-f18/www/papers/ieeemicro96-adve-consistency.pdf).
-Ampliar y verificar metadatos bibliográficos antes de incorporarla al paper.
+Bajo una sesión sin fallos, el orden de commits permite justificar los valores leídos.
+La suite comprueba ejemplos y carreras controladas; no es una prueba formal de todos
+los interleavings. No se promete consistencia recuperable tras desconexión: se aborta.

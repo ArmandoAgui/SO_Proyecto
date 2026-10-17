@@ -1,0 +1,64 @@
+[NODE 0] Iniciando nodo
+[NODE 0] Escuchando en 127.0.0.1:41721
+[NODE 0] Intentando conectar con 127.0.0.1:33611 (1/30)
+[NODE 0] Conexión establecida con Nodo 1
+[NODE 0] Mensaje enviado: HELLO 0
+[NODE 0] Mensaje recibido: HELLO_ACK 1
+[NODE 0] Intercambio HELLO completo
+[NODE 0] SEND HELLO_CONFIG origin=0 req=0 page=4294967295 version=0 flags=0 bytes=12
+[NODE 0] RECV HELLO_CONFIG origin=1 req=0 page=4294967295 version=0 flags=0 bytes=12
+[NODE 0] DSM_READY pages=256 page_bytes=4096
+Comandos: read <0..255>             Migra la propiedad para leer
+          read-copy <0..255>        Obtiene/conserva copia de solo lectura
+          write <0..255> <texto>    Exclusividad y reemplazo (1..4095 bytes)
+          status [0..255]           Estado local y directorio en N0
+          help | exit               Ayuda / cierre ordenado
+Texto literal: sin interpretar comillas ni comandos de shell. Enter cierra.
+[NODE 0] req=1 page=3 LOCAL_HIT authorization_required=1
+[NODE 0] req=1 page=3 GRANT_WRITE owner=0 invalidations_confirmed=1
+[NODE 0] RESULT WRITE req=1 page=3 version=1 data="hola desde N0"
+[NODE 0] req=1 page=3 COMMIT owner=0 version=1 valid_mask=1
+[NODE 0] RECV READ_REQUEST origin=1 req=1 page=3 version=0 flags=1 bytes=0
+[NODE 0] req=1 page=3 INVALIDATE_APPLIED state=INVALID
+[NODE 0] req=1 page=3 GRANT_READ owner=1 invalidations_confirmed=1
+[NODE 0] SEND PAGE_DATA origin=1 req=1 page=3 version=1 flags=1 bytes=4096
+[NODE 0] RECV ACK origin=1 req=1 page=3 version=1 flags=2 bytes=0
+[NODE 0] req=1 page=3 COMMIT owner=1 version=1 valid_mask=2
+[NODE 0] req=1 page=3 OWNER_CHANGED 0 -> 1
+[NODE 0] STATUS pending=0 transaction=0 faults=0 pages_sent=1 pages_received=0 invalidations=1 commits=2
+[NODE 0] PAGE page=3 state=INVALID version=1 owner_hint=1 directory_owner=1 directory_version=1 valid_mask=2
+[NODE 0] req=2 page=3 PAGE_FAULT simulated=1
+[NODE 0] SEND FETCH_PAGE origin=0 req=2 page=3 version=1 flags=0 bytes=0
+[NODE 0] RECV PAGE_DATA origin=0 req=2 page=3 version=1 flags=0 bytes=4096
+[NODE 0] req=2 page=3 GRANT_READ owner=1 invalidations_confirmed=1
+[NODE 0] req=2 page=3 PAGE_INSTALLED bytes=4096 state=READ_ONLY
+[NODE 0] RESULT READ_COPY req=2 page=3 version=1 data="hola desde N0"
+[NODE 0] req=2 page=3 COMMIT owner=1 version=1 valid_mask=3
+[NODE 0] STATUS pending=0 transaction=0 faults=1 pages_sent=1 pages_received=1 invalidations=1 commits=3
+[NODE 0] PAGE page=3 state=READ_ONLY version=1 owner_hint=1 directory_owner=1 directory_version=1 valid_mask=3
+[NODE 0] RECV INVALIDATE origin=1 req=2 page=3 version=1 flags=3 bytes=0
+[NODE 0] req=2 page=3 INVALIDATE_APPLIED state=INVALID
+[NODE 0] req=2 page=3 GRANT_WRITE owner=1 invalidations_confirmed=1
+[NODE 0] SEND GRANT origin=1 req=2 page=3 version=1 flags=3 bytes=0
+[NODE 0] RECV ACK origin=1 req=2 page=3 version=2 flags=2 bytes=0
+[NODE 0] req=2 page=3 COMMIT owner=1 version=2 valid_mask=2
+[NODE 0] STATUS pending=0 transaction=0 faults=1 pages_sent=1 pages_received=1 invalidations=2 commits=4
+[NODE 0] PAGE page=3 state=INVALID version=1 owner_hint=1 directory_owner=1 directory_version=2 valid_mask=2
+[NODE 0] req=3 page=3 PAGE_FAULT simulated=1
+[NODE 0] SEND FETCH_PAGE origin=0 req=3 page=3 version=2 flags=0 bytes=0
+[NODE 0] RECV PAGE_DATA origin=0 req=3 page=3 version=2 flags=0 bytes=4096
+[NODE 0] SEND INVALIDATE origin=0 req=3 page=3 version=2 flags=1 bytes=0
+[NODE 0] RECV ACK origin=0 req=3 page=3 version=2 flags=1 bytes=0
+[NODE 0] req=3 page=3 GRANT_READ owner=0 invalidations_confirmed=1
+[NODE 0] req=3 page=3 PAGE_INSTALLED bytes=4096 state=OWNER
+[NODE 0] RESULT READ req=3 page=3 version=2 data="actualizado por N1"
+[NODE 0] req=3 page=3 COMMIT owner=0 version=2 valid_mask=1
+[NODE 0] req=3 page=3 OWNER_CHANGED 1 -> 0
+[NODE 0] STATUS pending=0 transaction=0 faults=2 pages_sent=1 pages_received=2 invalidations=2 commits=5
+[NODE 0] PAGE page=3 state=OWNER version=2 owner_hint=0 directory_owner=0 directory_version=2 valid_mask=1
+[NODE 0] Cierre solicitado por el usuario; esperando operación pendiente
+[NODE 0] STATUS pending=0 transaction=0 faults=2 pages_sent=1 pages_received=2 invalidations=2 commits=5
+[NODE 0] PAGE page=3 state=OWNER version=2 owner_hint=0 directory_owner=0 directory_version=2 valid_mask=1
+[NODE 0] MEMORY bytes=1048576 INVALID=0 READ_ONLY=0 OWNER=256
+[NODE 0] Conexión cerrada
+[NODE 0] Socket servidor cerrado. Nodo finalizado

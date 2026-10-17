@@ -1,26 +1,34 @@
-# Pruebas de Fase 1
+# Pruebas del simulador
 
-Ejecutar desde la raíz:
+`make test` ejecuta tres programas C y 22 casos de integración usando solo Python
+estándar como harness. Requiere puertos 5000/5001 libres y tarda alrededor de 50 s,
+porque incluye agotamiento de reintentos y timeout de saludo.
+
+| Archivo | Cobertura |
+|---|---|
+| unit/network_test.c | Líneas parciales/juntas, EOF, límite, SIGPIPE, envío íntegro, codec binario y cola EAGAIN. |
+| unit/memory_cli_test.c | Memoria válida/inválida, versiones, límites y parser. |
+| unit/protocol_test.c | Esperar ACK antes de escribir, ACK falso, BUSY y expiración. |
+| integration/test_sockets.py | 13 casos de arranque, argumentos, conexión, cierre y timeout. |
+| integration/test_dsm.py | Nueve casos de migración, copias, exclusividad, datos, errores y carreras controladas. |
+
+La suite DSM incluye 48 operaciones con oráculo de valores y un peer falso que
+retrasa ACK para comprobar el orden y provocar BUSY de manera determinista.
+El harness tiene plazos y limpieza de hijos incluso si falla una aserción.
 
 ```sh
+make test-unit
 make test
+make sanitize
+# Solo DSM, con el ejecutable normal ya compilado:
+python3 -m unittest discover -s tests/integration -p 'test_dsm.py' -v
 ```
 
-Requisitos: compilador C11, Make y Python 3 (biblioteca estándar). El simulador no
-depende de Python. Los puertos 5000 y 5001 deben estar libres para el escenario que
-reproduce los comandos de la demo; los demás escenarios usan puertos temporales.
+DSM_BINARY permite elegir otro ejecutable sin sustituir el simulador por Python.
+make sanitize usa un directorio build/sanitize separado y ASan/UBSan. Los mensajes de
+error esperados de las pruebas negativas no significan fallo de la suite: evaluar
+PASS/OK y el código de salida.
 
-- `unit/network_test.c`: sockets locales de prueba para líneas fragmentadas y juntas,
-  EOF normal y parcial, límite de longitud, envío a peer cerrado sin SIGPIPE y envío
-  de 64 KiB con buffer pequeño a un proceso receptor que verifica todos los bytes.
-  La prueba del buffer comprueba integridad; no instrumenta el número de llamadas send.
-- `integration/test_sockets.py`: 13 casos con procesos reales y TCP loopback: ayuda;
-  argumentos inválidos (13 variantes); N0 primero con reintento y puertos 5000/5001;
-  N1 primero; Enter/exit/EOF; Ctrl+C; SIGTERM durante reintento y accept;
-  puerto ocupado; HELLO fragmentado y EOF parcial; identidad HELLO inválida; timeout de HELLO y agotamiento de los 30 reintentos.
-  La suite tarda aproximadamente 41 segundos.
-  Comprueba el intercambio en ambos sentidos y que los procesos siguen vivos hasta
-  el cierre. Los hijos se limpian aun cuando una prueba falla.
-
-Estas pruebas no validan páginas ni consistencia DSM. Los escenarios futuros siguen
-en `docs/testing/test-plan.md` y `scenarios.md`.
+Ver docs/testing/RESULTADOS.md y evidence/ para resultados reales. Los escenarios
+anteriores se conservan como referencia; la semántica vigente de read migra, mientras
+read-copy conserva réplicas.

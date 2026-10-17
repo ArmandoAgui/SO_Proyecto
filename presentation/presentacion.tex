@@ -1,0 +1,172 @@
+\documentclass[aspectratio=169]{beamer}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[spanish]{babel}
+\usepackage{tikz}
+\usetheme{Madrid}
+\definecolor{navy}{RGB}{19,42,65}
+\definecolor{teal}{RGB}{0,116,123}
+\setbeamercolor{structure}{fg=teal}
+\setbeamercolor{palette primary}{bg=navy,fg=white}
+\setbeamertemplate{navigation symbols}{}
+\title[Proyecto 10 / DSM]{Memoria compartida distribuida\\Mini-simulador a nivel de página}
+\subtitle{Dos procesos, páginas que migran y escrituras exclusivas}
+\author[Equipo 10]{Armando, Daniel, Guillermo, Daniel y Mauricio}
+\institute[SO]{Sistemas Operativos\\Catedrático: David Garcia Cerna\\Institución y sección: por completar}
+\date{17 de octubre de 2026}
+\begin{document}
+\begin{frame}\titlepage\end{frame}
+
+\begin{frame}{El problema que resolvemos}
+\begin{itemize}
+\item Cada proceso tiene su propia memoria: no ve directamente el arreglo del otro.
+\item Queremos consultar y modificar páginas como parte de un espacio lógico común.
+\item Los datos viajan por sockets; las reglas deciden quién puede usarlos.
+\end{itemize}
+\begin{block}{Objetivo de la guía}
+Demostrar migración para lectura e invalidación antes de escribir.
+\end{block}
+\end{frame}
+
+\begin{frame}{Qué construimos}
+\begin{columns}
+\column{.48\textwidth}
+\begin{itemize}
+\item C11 en Pop!\_OS / Linux.
+\item Dos procesos independientes.
+\item TCP IPv4: 127.0.0.1.
+\item Un hilo por proceso; poll.
+\end{itemize}
+\column{.48\textwidth}
+\begin{itemize}
+\item 1 MiB local por nodo.
+\item 256 páginas de 4096 bytes.
+\item Inicio: N0 dueño, N1 inválido.
+\item Fallo simulado al revisar etiquetas.
+\end{itemize}
+\end{columns}
+\begin{alertblock}{Alcance}
+No se interceptan punteros C ni fallos reales del kernel.
+\end{alertblock}
+\end{frame}
+
+\begin{frame}{Una conexión y un coordinador}
+\centering
+\begin{tikzpicture}[every node/.style={align=center}]
+\node[draw=teal,thick,rounded corners,minimum width=4cm,minimum height=2cm] (n0) at (0,0)
+{N0: coordinador\\directorio + memoria\\puerto 5000};
+\node[draw=teal,thick,rounded corners,minimum width=4cm,minimum height=2cm] (n1) at (8,0)
+{N1: participante\\memoria local\\puerto 5001};
+\draw[<->,thick] (n0) -- node[above]{TCP: control y páginas} (n1);
+\end{tikzpicture}
+\vspace{.4cm}
+\begin{itemize}
+\item N0 conecta; N1 acepta. Ambos pueden iniciar primero.
+\item El coordinador permanece en N0; la propiedad de datos puede migrar.
+\end{itemize}
+\end{frame}
+
+\begin{frame}{Tres etiquetas por página}
+\begin{description}
+\item[INVALID] Puede haber bytes viejos, pero no se permite leerlos.
+\item[READ\_ONLY] Copia válida para lectura; no autoriza modificar.
+\item[OWNER] Copia autoritativa; necesita exclusividad antes de escribir.
+\end{description}
+\begin{block}{Dos lecturas distintas}
+\texttt{read}: migra y deja un dueño único.\\
+\texttt{read-copy}: conserva una réplica para mostrar invalidación de lectores.
+\end{block}
+\end{frame}
+
+\begin{frame}{Demo 1: la página migra para leer}
+\begin{enumerate}
+\item N0: \texttt{write 3 hola desde N0}.
+\item N1: \texttt{read 3}; detecta INVALID y solicita la página.
+\item Se preservan datos; N0 invalida su copia.
+\item Viajan 4096 bytes; N1 instala, lee y confirma.
+\end{enumerate}
+\begin{block}{Comprobar en ambas terminales}
+\texttt{status 3}: N0 = INVALID; N1 = OWNER; versión = 1.
+\end{block}
+\end{frame}
+
+\begin{frame}{Demo 2: invalidar antes de escribir}
+\begin{enumerate}
+\item N0: \texttt{read-copy 3}; queda READ\_ONLY y N1 conserva OWNER.
+\item N1: \texttt{write 3 actualizado por N1}; envía INVALIDATE.
+\item N0 aplica INVALIDATE\_APPLIED y concede exclusividad.
+\item Solo entonces N1 escribe; versión = 2.
+\item N0: \texttt{read 3}; recupera el texto nuevo y la propiedad.
+\end{enumerate}
+\begin{block}{Otra dirección}
+Si N0 escribe con lector N1, envía INVALIDATE y espera ACK remoto antes de escribir.
+\end{block}
+\end{frame}
+
+\begin{frame}{Por qué no se usan datos viejos}
+\begin{itemize}
+\item Toda operación pasa por N0, incluso un acierto local.
+\item Se admite una transacción global: obtener datos, invalidar, conceder, confirmar.
+\item La copia INVALID nunca sirve una lectura.
+\item La escritura requiere confirmaciones; cada escritura aumenta la versión.
+\item Otra solicitud recibe BUSY y se reintenta manualmente.
+\end{itemize}
+\begin{block}{Distinción}
+Coherencia trata las copias; consistencia trata el orden observable de accesos.
+\end{block}
+\end{frame}
+
+\begin{frame}{Transporte y errores}
+\begin{itemize}
+\item TCP entrega bytes, no mensajes completos.
+\item Cabecera de 40 bytes y longitudes exactas; una página lleva 4096 bytes.
+\item Buffers conservan recepción y envío parciales; no bloquean la terminal.
+\item Se rechazan índices, tamaños, versiones o ACK fuera de fase.
+\item Plazos: saludo/config 10 s; operación/trama/cola 5 s.
+\end{itemize}
+\begin{alertblock}{Ante caída}
+Se aborta y se reinician ambos nodos. No se promete recuperación de propiedad.
+\end{alertblock}
+\end{frame}
+
+\begin{frame}{Pruebas y resultados reales}
+\begin{itemize}
+\item Compilación limpia sin warnings; tres programas de pruebas C.
+\item 22 pruebas de integración aprobadas con procesos TCP reales.
+\item Nueve escenarios DSM con ASan/UBSan, sin errores detectados.
+\item ACK retrasado: se comprueba que la escritura espere y que otra solicitud reciba BUSY.
+\item 48 operaciones con semilla fija contrastadas con un modelo de valores.
+\end{itemize}
+\begin{block}{Demo de cinco operaciones}
+3 transferencias de página = 12288 bytes de payload; 3 fallos simulados;
+3 invalidaciones aplicadas; versión final 2; propietario final N0.
+\end{block}
+\end{frame}
+
+\begin{frame}[fragile]{Reproducir desde la terminal}
+\begin{verbatim}
+make
+# Terminal N0
+./build/dsm-node --id 0 --port 5000 --peer-port 5001
+# Terminal N1
+./build/dsm-node --id 1 --port 5001 --peer-port 5000
+\end{verbatim}
+Esperar DSM\_READY. Introducir una orden y esperar su resultado.
+\begin{verbatim}
+make test      # pruebas
+make demo      # demo y trazas verificadas
+make package   # fuentes + articulo y presentacion PDF
+\end{verbatim}
+\end{frame}
+
+\begin{frame}{Límites, aprendizaje y fuentes}
+\begin{itemize}
+\item Dos nodos, memoria volátil, loopback y una operación a la vez.
+\item Sin acceso transparente, persistencia, reconexión ni tolerancia a fallos.
+\item Las pruebas dan evidencia; no son una demostración formal exhaustiva.
+\item Aprendizaje: relacionar páginas, propiedad, mensajes y orden de acceso.
+\end{itemize}
+\small Referencias: Li y Hudak, ACM TOCS 7(4), 1989; Lamport, IEEE TC C-28(9), 1979;
+Linux man-pages: tcp(7), recv(2), send(2), poll(2). Enlaces en el artículo y FUENTES.md.
+\end{frame}
+\end{document}

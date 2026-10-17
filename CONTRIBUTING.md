@@ -9,9 +9,9 @@
 feature/* --PR y revisión--> develop --PR de entrega--> main
 ```
 
-El repositorio aún no tiene commits. Crear primero el commit de estructura en `main`,
-publicarlo cuando el equipo lo decida y después crear `develop`. No se han creado ramas,
-commits ni issues remotos automáticamente. Comprobar el remoto antes de publicar.
+El repositorio ya contiene historia de Git. Los cambios de esta implementación se
+mantienen locales para revisión; no se crean commits ni se publican automáticamente.
+Comprobar rama, remoto y estado antes de publicar una entrega acordada por el equipo.
 
 Para cada tarea, actualizar `develop`, abrir una rama, realizar cambios pequeños,
 probarlos y abrir PR hacia `develop`. Una persona distinta revisa el contrato entre
@@ -27,7 +27,7 @@ Ejemplos: `feat(network): recibir tramas completas`,
 `fix(protocol): esperar ACK antes de conceder escritura`,
 `docs(states): aclarar propietario con lectores`.
 
-## Reglas de C para la implementación futura
+## Reglas de C
 
 C11; `-Wall -Wextra -Wpedantic -g`, incluir prototipos y verificar valores de retorno.
 Sin variables globales mutables compartidas entre módulos; pasar contexto explícito.

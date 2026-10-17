@@ -24,4 +24,20 @@ DSMStatus dsm_network_send(int fd, const char *message);
  * Reset used to zero after consuming a complete message. */
 DSMStatus dsm_network_receive(int fd, DSMLineBuffer *line);
 
+#define DSM_SEND_CAPACITY 65536u
+typedef struct {
+    unsigned char data[DSM_HEADER_BYTES + DSM_PAGE_BYTES];
+    size_t used;
+    size_t target;
+} DSMReceiveBuffer;
+typedef struct {
+    unsigned char data[DSM_SEND_CAPACITY];
+    size_t used;
+    size_t sent;
+} DSMSendBuffer;
+
+DSMStatus dsm_network_queue(DSMSendBuffer *buffer, const DSMMessage *message);
+DSMStatus dsm_network_flush(int fd, DSMSendBuffer *buffer);
+DSMStatus dsm_network_receive_message(int fd, DSMReceiveBuffer *buffer, DSMMessage *message);
+
 #endif /* DSM_NETWORK_H */

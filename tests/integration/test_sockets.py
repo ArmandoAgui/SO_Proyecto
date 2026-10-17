@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Fase 1: dos procesos C reales; solo biblioteca estándar de Python."""
 import pathlib
+import os
 import signal
 import socket
 import subprocess
@@ -9,10 +10,10 @@ import time
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-BINARY = ROOT / 'build/dsm-node'
+BINARY = pathlib.Path(os.environ.get('DSM_BINARY', str(ROOT / 'build/dsm-node')))
 
 
-class SocketsTest(unittest.TestCase):
+class NodeHarness(unittest.TestCase):
     def setUp(self):
         self.nodes = []
 
@@ -46,7 +47,6 @@ class SocketsTest(unittest.TestCase):
 
     def output(self, node):
         # pread leaves the child's shared stdout file offset unchanged.
-        import os
         return os.pread(node[1].fileno(), 100000, 0).decode(errors='replace')
 
     def wait_log(self, node, expected, timeout=5):
@@ -70,7 +70,7 @@ class SocketsTest(unittest.TestCase):
         second_id = 1 - first_id
         nodes[second_id] = self.start(second_id, (p0, p1)[second_id], (p1, p0)[second_id])
         for node in nodes.values():
-            self.wait_log(node, 'Intercambio HELLO completo')
+            self.wait_log(node, 'DSM_READY')
             self.assertIsNone(node[0].poll())
         self.assertIn('Mensaje recibido: HELLO 0', self.output(nodes[1]))
         self.assertIn('Mensaje recibido: HELLO_ACK 1', self.output(nodes[0]))
@@ -81,6 +81,9 @@ class SocketsTest(unittest.TestCase):
         self.assertEqual(node[0].wait(timeout=5), expected, self.output(node))
         self.assertIn('Socket servidor cerrado', self.output(node))
 
+
+
+class SocketsTest(NodeHarness):
     def test_help(self):
         result = subprocess.run([str(BINARY), '--help'], capture_output=True, text=True, timeout=3)
         self.assertEqual(result.returncode, 0)
@@ -162,13 +165,20 @@ class SocketsTest(unittest.TestCase):
             client.sendall(b'LO 0\n')
             received = b''
             while not received.endswith(b'\n'):
-                chunk = client.recv(64)
+                chunk = client.recv(1)
                 self.assertTrue(chunk)
                 received += chunk
             self.assertEqual(received, b'HELLO_ACK 1\n')
             self.wait_log(node, 'Intercambio HELLO completo')
+            # Drain the new binary config before deliberately truncating a frame.
+            remaining = 52
+            while remaining:
+                chunk = client.recv(remaining)
+                self.assertTrue(chunk)
+                remaining -= len(chunk)
             client.sendall(b'partial')
-        self.finish(node, expected=1)
+            client.shutdown(socket.SHUT_WR)
+            self.finish(node, expected=1)
         self.assertIn('Error al recibir mensaje', self.output(node))
 
     def test_hello_timeout(self):

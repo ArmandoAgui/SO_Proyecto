@@ -1,5 +1,8 @@
 # Responsabilidades para cinco integrantes
 
+> Plan original conservado como historial. Para el estado actual, consulte
+> `IMPLEMENTACION_DSM.md`, `ENTREGA_PROYECTO10.md` y el README de la raíz.
+
 | Integrante | Responsabilidad técnica principal | Entregables y colaboración |
 |---|---|---|
 | I1 | Arquitectura e integración: node, main, configuración y bucle poll | Makefile, ciclo de vida, integración de módulos; revisa contrato y fallos con I4 |

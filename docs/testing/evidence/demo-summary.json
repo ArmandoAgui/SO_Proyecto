@@ -1,0 +1,56 @@
+{
+  "date_local": "2026-10-17T11:51:25.101806-06:00",
+  "os": "Linux-7.1.5-76070105-generic-x86_64-with-glibc2.39",
+  "compiler": "cc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0",
+  "base_commit": "e10c91ff3392781ccfc54fdedd59308f072e131b",
+  "working_tree_dirty": true,
+  "source_sha256": "34630412a71d5a7c2880fe65ae385e9eb37b03b00166ca3ba0b430946ca68ab5",
+  "result": "PASS",
+  "commands": [
+    {
+      "node": 0,
+      "command": "write 3 hola desde N0"
+    },
+    {
+      "node": 1,
+      "command": "read 3"
+    },
+    {
+      "node": 0,
+      "command": "status 3"
+    },
+    {
+      "node": 1,
+      "command": "status 3"
+    },
+    {
+      "node": 0,
+      "command": "read-copy 3"
+    },
+    {
+      "node": 0,
+      "command": "status 3"
+    },
+    {
+      "node": 1,
+      "command": "write 3 actualizado por N1"
+    },
+    {
+      "node": 0,
+      "command": "status 3"
+    },
+    {
+      "node": 0,
+      "command": "read 3"
+    },
+    {
+      "node": 0,
+      "command": "status 3"
+    },
+    {
+      "node": 1,
+      "command": "status 3"
+    }
+  ],
+  "note": "Puertos efímeros; misma lógica que la demo manual 5000/5001. No mide latencia."
+}

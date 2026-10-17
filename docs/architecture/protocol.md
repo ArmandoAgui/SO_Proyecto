@@ -1,126 +1,127 @@
-# Protocolo conceptual — propuesta, sin implementar
+# Protocolo implementado, versión 1
 
-La Fase 1 solo implementa el saludo textual `HELLO 0\n` (N0 → N1) y
-`HELLO_ACK 1\n` (N1 → N0), en `node`/`network`. El módulo `protocol` sigue como stub.
-El HELLO binario y todos los mensajes DSM de este documento son propuestas futuras;
-no describen el formato ejecutable actual.
+N0 coordina un acceso global activo y mantiene el directorio. Los datos pueden ser
+propiedad de cualquiera. Todos los accesos, incluidos hits, solicitan autorización.
+Las solicitudes de N0 usan el mismo coordinador mediante llamadas locales.
 
-## Autoridad y orden
+## Arranque y formato
 
-N0 mantiene el directorio y admite una sola operación global. Todas las órdenes read/write
-se despachan allí; las originadas en N0 siguen la misma máquina de estados mediante
-llamadas locales. Una solicitud adicional recibe ERROR(BUSY), no se ejecuta ni se
-reintenta automáticamente. Cada nodo mantiene como máximo una orden CLI pendiente.
-Mientras espera, sigue atendiendo mensajes de servicio. Evitar hilos por ahora.
+Primero se conserva el saludo textual: N0 envía `HELLO 0\n`, N1 responde
+`HELLO_ACK 1\n`. Después ambos envían HELLO_CONFIG binario con tres uint32 en orden
+de red: node_id, page_count=256 y page_bytes=4096. Solo entonces aparece DSM_READY.
 
-Esto propone un orden total de accesos completados que respeta el orden de cada nodo:
-la operación siguiente no se concede hasta terminar la anterior. Bajo una sesión sin
-fallos, las lecturas deben observar la última escritura de ese orden. La coherencia
-por página y este orden de ejecución son conceptos distintos; no basta con invalidar
-copias para afirmar consistencia secuencial. La implementación tendrá que verificar
-estas reglas; todavía no hay una garantía demostrada por código.
+Cada trama binaria lleva 40 bytes, diez uint32 big endian:
 
-## Mensajes
+| Offset | Campo |
+|---|---|
+| 0 | magic = 0x44534D31 (DSM1) |
+| 4 | protocol_version = 1 |
+| 8 | type |
+| 12 | origin_id: solicitante original, no necesariamente emisor físico |
+| 16 | request_id: creciente por origin |
+| 20 | page_id; UINT32_MAX para HELLO_CONFIG |
+| 24 | owner_id; UINT32_MAX si no hay copia/valor aplicable |
+| 28 | page_version |
+| 32 | flags: modo, fase ACK o código de error según tipo |
+| 36 | payload_len |
 
-Todos llevan tipo, origin_id del solicitante original, request_id, page_id, versión,
-owner_id, flags y longitud. La identidad del emisor físico se conoce por la conexión;
-no confundirla con origin_id cuando N0 reenvía una solicitud.
+Validaciones: magic/versión, tipo conocido, origen 0/1, propietario 0/1 o sentinel,
+página en rango, tamaño exacto según tipo, roles, orden y correlación de respuestas.
+No se envían enums, punteros, padding ni sizeof(struct). La cabecera se valida antes
+de recibir el cuerpo, sin asignaciones basadas en longitud arbitraria del peer.
 
-| Mensaje | Emisor → receptor; momento | Información específica | Respuesta esperada |
+## Tipos y constantes
+
+| Valor | Tipo | Payload | Uso |
 |---|---|---|---|
-| HELLO | N0 → N1 al conectar (propuesta binaria futura) | Identidad, tamaño/número de páginas, versión de protocolo | HELLO de N1 compatible o ERROR y cierre |
-| READ_REQUEST | Solicitante → N0 al leer, incluso hit local | Estado y versión que declara la copia local | GRANT READ si válida; PAGE_DATA READ si falta; ERROR |
-| WRITE_REQUEST | Solicitante → N0 antes de cualquier escritura | Estado/versión local; texto queda pendiente en CLI | GRANT WRITE o PAGE_DATA WRITE después de invalidaciones; ERROR |
-| FETCH_PAGE | N0 → dueño si faltan bytes para atender un acceso | Página y versión confirmada esperada | PAGE_DATA FETCH_REPLY o ERROR |
-| PAGE_DATA | Dueño → N0 como respuesta a FETCH; N0 → solicitante en un fallo | Página completa y versión; modo FETCH_REPLY, READ o WRITE | En FETCH: continuar transacción; en READ/WRITE: ACK de finalización |
-| GRANT | N0 → solicitante cuando ya tiene bytes válidos | Modo READ/WRITE, versión base y propietario previsto | ACK READ_DONE o WRITE_DONE |
-| INVALIDATE | N0 → cualquier otro poseedor válido antes de escribir | Página, versión anterior e identidad de transacción | ACK INVALIDATED después de invalidar |
-| ACK | Receptor del evento → N0 | Fase INVALIDATED, READ_DONE o WRITE_DONE; versión aplicada | Sin ACK de ACK; avanzar o cerrar transacción |
-| ERROR | Receptor que detecta error → solicitante/N0 | Código y breve descripción acotada | Ninguna; BUSY permite nueva solicitud manual |
+| 1 | HELLO_CONFIG | 12 bytes | Negociar identidad/geometría; request=0. |
+| 2 | READ_REQUEST | 0 | N1 solicita read o read-copy a N0. |
+| 3 | WRITE_REQUEST | 0 | N1 solicita escritura sin ser dueño local. |
+| 4 | FETCH_PAGE | 0 | N0 recupera bytes del dueño N1. |
+| 5 | PAGE_DATA | 4096 bytes | Respuesta FETCH o instalación autorizada. |
+| 6 | GRANT | 0 | Permiso cuando solicitante ya tiene datos vigentes. |
+| 7 | INVALIDATE | 0 | N0 ordena invalidar N1; o N1 dueño pide invalidación/exclusividad a N0. |
+| 8 | ACK | 0 | Confirmación de invalidación o finalización. |
+| 9 | ERROR | 0 | BUSY o VERSION_EXHAUSTED; solicitud no ejecutada. |
 
-GRANT y FETCH_PAGE hacen explícitos permiso y recuperación de datos. Sin ellos,
-PAGE_DATA tendría significados implícitos difíciles de explicar. No hay mensajes para
-consenso, descubrimiento, replicación del directorio ni recuperación de sesiones.
+Modos: ACCESS_READ=1 (migra), ACCESS_COPY=2 (replica), ACCESS_WRITE=3.
+PAGE_DATA con flags=0 es FETCH_REPLY y se permite solo mientras N0 espera esos bytes.
+ACK_INVALIDATED=1, ACK_DONE=2. ERROR_BUSY=1, ERROR_VERSION=2.
+En solicitudes, owner_id=UINT32_MAX declara copia inválida; en caso contrario es hint,
+y page_version declara la versión local. El directorio decide si hacen falta datos.
 
-## Flujos completos A–E
+INVALIDATE tiene dos direcciones explícitas según rol: N0 → N1 es una orden cuyo ACK
+es obligatorio; N1 → N0 inicia una transacción WRITE del dueño y N1 espera GRANT.
+N0 aplica la invalidación local antes de esa concesión, que confirma exclusividad.
+Una petición vieja que aún declare propiedad no concede nada por sí misma: N0 consulta
+su directorio y recupera datos si ahora son necesarios.
 
-### A. Lectura local válida
+## Máquina de transacción
 
-1. CLI valida el identificador y solicita READ a N0 (despacho local si es N0).
-2. N0 reserva la operación y comprueba el bit válido y versión del solicitante.
-3. Emite GRANT READ; no transfiere bytes de página.
-4. Solicitante lee su arreglo, muestra el resultado y envía READ_DONE.
-5. N0 libera la operación. Estado y versión no cambian.
+```text
+IDLE -> [FETCHING si faltan datos del dueño remoto]
+     -> INVALIDATING -> espera ACK remotos
+     -> WAIT_DONE -> ACK_DONE -> COMMIT -> IDLE
+```
 
-Una copia local válida no implica acceso sin coordinación en este diseño.
+1. N0 admite solicitud o responde BUSY. Una WRITE con versión UINT32_MAX se rechaza.
+2. Si faltan bytes al solicitante, toma instantánea del dueño, localmente o FETCH.
+3. En READ/WRITE invalida todos los holders distintos del solicitante. En COPY no invalida.
+4. Espera ACK_INVALIDATED de holders remotos; la invalidación propia se aplica localmente.
+5. Envía PAGE_DATA si faltaban datos o GRANT si la copia ya era válida. Fija WAIT_DONE
+   antes del despacho local, porque una operación N0 puede completarse inmediatamente.
+6. Solicitante instala/promueve estado y ejecuta. WRITE aumenta versión; READ/COPY no.
+7. Solicitante envía ACK_DONE. N0 valida versión/owner, actualiza directorio y libera tx.
 
-### B. Lectura remota, estado INVALID
+En reposo READ y WRITE dejan valid_mask con solo el solicitante; COPY añade el lector
+sin cambiar dueño. Las respuestas correlacionan origin, request, page y fase esperada.
+Un ACK inesperado no desbloquea la transacción y provoca aborto de sesión.
 
-1. Se registra PAGE_FAULT simulado y se solicita READ a N0.
-2. N0 toma los bytes del dueño: localmente si él los posee, o FETCH_PAGE/PAGE_DATA.
-3. Envía PAGE_DATA READ al solicitante, que instala bytes y versión.
-4. Si no es dueño queda READ_ONLY; el dueño conserva OWNER.
-5. Tras READ_DONE, N0 agrega al lector a valid_mask y termina la operación.
+## Flujos de demo
 
-Si N0 solo recibe bytes para reenviar, su buffer de transacción no es una copia local
-válida: no agregar N0 al directorio salvo que sea el solicitante que instala la página.
+Migración inicial N0 → N1:
 
-### C. Escritura por el dueño actual
+```text
+N1 -> READ_REQUEST -> N0
+N0: snapshot, INVALIDATE_APPLIED local
+N0 -> PAGE_DATA OWNER -> N1
+N1: instala, lee -> ACK_DONE -> N0 COMMIT owner=1
+```
 
-1. Se valida texto y límites antes de pedir WRITE.
-2. N0 comprueba propietario y versión; si otro nodo tiene copia, envía INVALIDATE.
-3. Espera todos los INVALIDATED. Si no hay lectores, omite esos mensajes.
-4. Emite GRANT WRITE; solo ahora se reemplaza el contenido local de la página.
-5. El dueño incrementa versión y envía WRITE_DONE; N0 confirma la versión y deja
-   valid_mask con solo el dueño. No cambia propietario.
+Copia de lectura N1 → N0, sin migrar:
 
-### D. Escritura por el otro nodo
+```text
+N0 -> FETCH_PAGE -> N1 -> PAGE_DATA FETCH_REPLY -> N0
+N0: instala READ_ONLY, lee y confirma localmente; owner sigue 1
+```
 
-1. Se pide WRITE; N0 reserva la transacción.
-2. Si solicitante no tiene copia válida de la versión actual, se conserva una página
-   completa del dueño en el buffer de transacción. Esto sucede **antes** de invalidarlo.
-   Si el solicitante ya tiene READ_ONLY vigente, sus bytes son suficientes.
-3. N0 invalida a todo poseedor distinto del solicitante, incluido el dueño anterior;
-   espera INVALIDATED. El antiguo dueño no puede modificar ni servir nuevos accesos.
-4. Envía PAGE_DATA WRITE si faltaba copia, o GRANT WRITE si ya era válida.
-5. Solicitante instala si corresponde, pasa a OWNER pendiente y aplica la escritura.
-6. WRITE_DONE confirma nueva versión; N0 publica nuevo dueño y máscara de un solo bit.
-   Durante la transferencia, el directorio anterior está marcado por la transacción
-   activa y no habilita otros accesos.
+Escritura del dueño N1 con lector N0:
 
-### E. Acceso después de invalidación
+```text
+N1 -> INVALIDATE (solicitud WRITE) -> N0
+N0: INVALIDATE_APPLIED local -> GRANT WRITE -> N1
+N1: escribe -> ACK_DONE -> N0 COMMIT nueva versión
+```
 
-Los bytes residuales se ignoran. READ sigue B y recupera la última versión; WRITE sigue D.
-`version` local obsoleta no puede convertir INVALID en un hit. Nunca usar datos viejos
-para reconstruir una página que el propietario ya modificó.
+Escritura N0 con lector N1:
 
-## Formato y transporte futuros
+```text
+N0 -> INVALIDATE -> N1: INVALIDATE_APPLIED -> ACK_INVALIDATED -> N0
+N0: GRANT_WRITE local, escritura y COMMIT
+```
 
-Propuesta v1: cabecera de 40 bytes, diez enteros uint32 en orden de red:
-magic, protocol_version, type, origin_id, request_id, page_id, owner_id, page_version,
-flags, payload_len. No transmitir el enum C ni padding. Para mensajes sin página usar
-UINT32_MAX en page_id; para dueño desconocido usar UINT32_MAX en owner_id.
+## Consistencia y fallos
 
-PAGE_DATA tiene exactamente 4096 bytes. READ/WRITE_REQUEST llevan estado local en flags
-y versión declarada; GRANT usa flags para modo. ACK usa flags para su fase. HELLO lleva
-12 bytes (node_id, page_count, page_bytes); ERROR lleva código uint32 y texto UTF-8
-acotado. Payload máximo: una página. Validar tamaños exactos por tipo antes de reservar
-memoria o acceder a arrays. Los valores numéricos de flags y códigos se fijarán en el
-issue de contrato antes de implementar la serialización.
+Toda operación admitida se serializa en N0 hasta ACK_DONE. Los comandos completados
+pueden ordenarse por esos commits, manteniendo el orden de cada nodo. Esto sustenta
+la consistencia secuencial del modelo explícito bajo sesión sin fallos, sin afirmar
+que las pruebas sean una demostración formal ni que accesos por punteros estén cubiertos.
 
-Correlacionar (origin_id, request_id), tipo y fase esperada; rechazar ACK inesperados.
-Cada nodo solo acepta los tipos permitidos por su rol y fase. No hay reintento automático
-tras desconexión. Una trama puede llegar fragmentada o varias pueden llegar juntas:
-acumular cabecera/cuerpo y mantener offset de envío, atendiendo EINTR y EAGAIN.
-Referencias: [tcp(7)](https://man7.org/linux/man-pages/man7/tcp.7.html),
+Timeout absoluto: saludo/config 10 s; operación/trama parcial/cola pendiente 5 s.
+EOF normal en reposo cierra; EOF parcial, tamaño incorrecto, timeout o fase incoherente
+abortan. No hay rollback, persistencia ni reconexión. BUSY es un rechazo de operación,
+no un error de transporte; requiere nueva solicitud con nuevo identificador.
+
+Fuentes: [tcp(7)](https://man7.org/linux/man-pages/man7/tcp.7.html),
 [recv(2)](https://man7.org/linux/man-pages/man2/recv.2.html),
 [send(2)](https://man7.org/linux/man-pages/man2/send.2.html).
-
-## Errores y límites
-
-Página/texto inválido: rechazo local antes de enviar. BUSY: no cambia memoria.
-Versión o fase incoherente: error de protocolo, detener sesión. EOF, timeout monotónico
-(propuesta inicial: 5 s por operación) o envío fallido durante una transacción: detener
-ambos nodos al detectar cierre/plazo, sin seguir sirviendo datos ni asumir rollback.
-No es posible recuperar de forma segura una propiedad a medio transferir con este MVP.
-`exit` espera completar la orden pendiente; caída forzada aborta la sesión.

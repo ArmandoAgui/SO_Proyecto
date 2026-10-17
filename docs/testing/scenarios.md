@@ -1,22 +1,21 @@
-# Escenarios de aceptación futuros
+# Escenarios de aceptación actuales
 
-Reiniciar la sesión entre casos independientes. v indica la versión confirmada; leer
-no la incrementa. Comprobar el estado en reposo y eventos de cada solicitud.
+Reiniciar la sesión entre casos independientes. Comprobar estados tras RESULT y,
+si se consulta el directorio remoto, tras COMMIT. Leer no incrementa versión.
 
-| Caso | Preparación y acción | Resultado esperado |
+| Caso | Preparación/acción | Resultado |
 |---|---|---|
-| S01 — Inicio | Conectar N0 y N1 compatibles | Todas páginas N0 OWNER/N1 INVALID; dueño 0 y versión 0 |
-| S02 — Lectura local | N0 read 3 | Ceros/texto vacío; sin PAGE_DATA, sin fallo; v0 |
-| S03 — Lectura remota | N0 write 3 hola; N1 read 3 | N1 fallo, recibe hola v1; N0 OWNER/N1 READ_ONLY |
-| S04 — Hit de lectura | Después de S03, N1 read 3 | hola v1; control GRANT, sin nuevo PAGE_DATA ni fallo |
-| S05 — Dueño con lector | Después de S03, N0 write 3 nuevo | N1 INVALID y ACK antes de escritura; N0 OWNER v2 |
-| S06 — Relectura invalidada | Después de S05, N1 read 3 | Nuevo fallo y nuevo v2; jamás hola |
-| S07 — Transferencia | Después de S06, N1 write 3 adios; N0 read 3 | N0 se invalida antes de escritura; dueño N1 v3; lectura N0 obtiene adios y queda READ_ONLY |
-| S08 — Escritor sin copia | Sesión nueva: N1 write 4 remoto | Snapshot previa a invalidar N0; N1 OWNER v1, N0 INVALID; otros bytes según reemplazo documentado |
-| S09 — Simultaneidad | Solicitar escrituras en ambos nodos antes de completar primera | Una activa y otra BUSY; reintento ordenado, sin dos concesiones activas; conservar versión más reciente |
-| S10 — Errores y cierre | Rango 256, texto largo, ACK incorrecto, desconexión durante transferencia | Errores locales no mutan datos; fallo de protocolo/transporte aborta sesión, sin fingir rollback |
+| S01 | Conectar N0 y N1 | N0 OWNER y N1 INVALID en todas, versión 0. |
+| S02 | N0 read 3 | Texto vacío, sin PAGE_DATA, dueño N0. |
+| S03 | N0 write 3 hola; N1 read 3 | Fallo y migración: N0 INVALID, N1 OWNER, versión 1. |
+| S04 | Repetir N1 read 3 | Sin nueva transferencia; conserva propiedad y versión. |
+| S05 | Tras S03, N0 read-copy 3 | N0 READ_ONLY, N1 OWNER; mismos datos/versiones. |
+| S06 | Tras S05, N1 write 3 nuevo | N1 pide invalidación; N0 INVALID antes de GRANT y escritura; versión 2. |
+| S07 | N0 read 3 | Migra de vuelta y obtiene nuevo, N0 OWNER y N1 INVALID. |
+| S08 | Nueva sesión: N1 write 255 remoto | Snapshot, invalidación N0 y transferencia, N1 OWNER versión 1. |
+| S09 | N0 dueño con lector N1; escritura N0 y ACK retrasado | No escribe antes de ACK, solicitud concurrente recibe BUSY. |
+| S10 | Rango 256, longitud 4096, ACK incorrecto, EOF parcial | Errores locales no modifican; fallos de sesión abortan. |
 
-En S09 forzar el intercalado con el harness; no confiar en teclear al mismo tiempo.
-Ejecutar también la dirección inversa de transferencia y varias páginas independientes.
-Una lectura remota transfiere contenido, pero conserva al dueño: distinguir réplica de
-lectura y migración de propiedad en el informe.
+Los tests comprueban ambas direcciones, upgrade READ_ONLY y datos de múltiples páginas.
+S09 usa un peer controlado y prueba C; no se depende de teclear a la vez.
+La diferencia frente al plan original es explícita: read migra, read-copy replica.
