@@ -1,6 +1,7 @@
 # CLI propuesta
 
-La CLI es futura. El esqueleto actual solo imprime su estado; no ejecuta estos comandos.
+La CLI DSM es futura. La Fase 1 solo admite Enter o `exit` para cerrar tras HELLO;
+no ejecuta los comandos de memoria descritos aquí.
 
 Arranque previsto (no disponible todavía):
 

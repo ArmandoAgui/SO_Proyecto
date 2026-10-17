@@ -4,11 +4,16 @@ Proyecto 10 — Sistemas Operativos. Equipo de cinco integrantes.
 
 ## Estado actual
 
-Arquitectura, planificación y esqueleto C compilable. **Todavía no existe un simulador
-DSM funcional**, ni se ha validado el protocolo con código. Los tipos y mensajes del
-diseño son propuestas para implementar por fases. Los cinco módulos solo tienen stubs.
+**Fase 1 funcional:** dos procesos C independientes se conectan por una única conexión
+TCP IPv4 sobre `127.0.0.1`, intercambian `HELLO 0` / `HELLO_ACK 1` y mantienen la
+conexión hasta el cierre. `main`, `node` y `network` están implementados para esta fase;
+`memory`, `protocol` y `cli` siguen como stubs.
 
-## Alcance mínimo viable
+Todavía no existen páginas, DSM real, READ_REQUEST, WRITE_REQUEST, PAGE_DATA,
+INVALIDATE, consistencia ni transferencia de propiedad. El resto del diseño describe
+trabajo futuro. Ver el [reporte de Fase 1](docs/planning/FASE1_SOCKETS.md).
+
+## Alcance mínimo viable futuro
 
 - C11 sobre Linux; dos procesos independientes (nodos 0 y 1).
 - Una conexión TCP IPv4 persistente, inicialmente sobre `127.0.0.1`.
@@ -28,7 +33,7 @@ Se elige TCP frente a UDP para no implementar retransmisión de paquetes. TCP es
 flujo sin fronteras de mensajes: el transporte debe delimitar y acumular tramas.
 Fuente: [Linux tcp(7)](https://man7.org/linux/man-pages/man7/tcp.7.html).
 
-## Decisión de consistencia
+## Decisión de consistencia propuesta (futura)
 
 Todas las lecturas y escrituras, incluso sobre copias locales, piden autorización al
 coordinador. Una lectura local evita transferir datos, pero el nodo 1 todavía intercambia
@@ -77,15 +82,67 @@ LRU, mmap/mprotect, multiprocesamiento interno, interfaz gráfica, descubrimient
 consistencia relajada y optimizaciones de rendimiento. No simular latencia artificial
 antes de tener mediciones reales. El nodo 0 es un punto único de fallo aceptado.
 
-## Compilar y verificar el esqueleto
+## Compilar y ejecutar la Fase 1
+
+Requisitos: Linux, Make y compilador compatible con C11 (GCC o Clang). El ejecutable
+solo usa APIs Linux/POSIX, sin bibliotecas externas ni hilos. Python 3 es necesario
+únicamente para las pruebas de integración.
 
 ```sh
+make clean
 make
 ./build/dsm-node --help
-make run
+```
+
+Abre dos terminales en la raíz del repositorio. Terminal 1:
+
+```sh
+./build/dsm-node --id 0 --port 5000 --peer-port 5001
+```
+
+Terminal 2:
+
+```sh
+./build/dsm-node --id 1 --port 5001 --peer-port 5000
+```
+
+Ambos escuchan. Solo N0 conecta y N1 acepta, evitando dos conexiones independientes.
+Puedes iniciar cualquiera primero: N0 intenta hasta 30 veces, con pausas de 1 segundo
+si el peer todavía no escucha; N1 espera hasta recibir conexión o una señal de cierre.
+Los IDs válidos son 0 y 1; los puertos deben ser distintos y estar entre 1 y 65535.
+Cada `--peer-port` debe coincidir con el `--port` del otro proceso.
+
+Resultado esperado (algunas líneas):
+
+```text
+[NODE 0] Escuchando en 127.0.0.1:5000
+[NODE 0] Conexión establecida con Nodo 1
+[NODE 0] Mensaje enviado: HELLO 0
+[NODE 0] Mensaje recibido: HELLO_ACK 1
+[NODE 0] Intercambio HELLO completo. Enter o exit para cerrar.
+
+[NODE 1] Escuchando en 127.0.0.1:5001
+[NODE 1] Conexión recibida y aceptada desde 127.0.0.1
+[NODE 1] Mensaje recibido: HELLO 0
+[NODE 1] Mensaje enviado: HELLO_ACK 1
+[NODE 1] Intercambio HELLO completo. Enter o exit para cerrar.
+```
+
+La conexión permanece abierta tras el intercambio. Pulsa Enter o escribe `exit`
+seguido de Enter en cualquiera de las terminales: ese nodo cierra sus sockets y el
+otro detecta EOF, informa `Peer desconectado` y también finaliza. EOF en stdin,
+Ctrl+C y SIGTERM permiten cerrar; durante conexión/aceptación usa Ctrl+C.
+Sin actividad durante el HELLO por 10 segundos, la sesión termina con error.
+Un puerto ocupado o un mensaje inválido también genera un error comprensible y
+un código de salida distinto de cero. No hay reconexión automática tras una sesión.
+
+```sh
+make test   # Pruebas C de transporte y 13 pruebas de integración Python
+make help
+make run ARGS='--id 0 --port 5000 --peer-port 5001'
 make clean
 ```
 
-Requisitos: Linux, Make y compilador compatible con C11. `make` compila main y los cinco
-módulos. `make run` imprime que no hay simulación; no abre sockets ni atiende read/write.
-No existe todavía un target de pruebas DSM. `build/` contiene artefactos ignorados por Git.
+Las pruebas usan 5000/5001 para verificar los comandos exactos; esos puertos deben
+estar libres. Las demás pruebas eligen puertos temporales. `build/` está ignorado
+por Git. Detalles de cobertura en [tests/README.md](tests/README.md).

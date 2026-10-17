@@ -1,10 +1,11 @@
 # Plan de pruebas inicial
 
-Estado: plan, no suite implementada. La compilación del esqueleto no valida DSM.
+Estado: Fase 1 de sockets probada mediante `make test` (ver `tests/README.md`).
+El resto de este documento planifica pruebas DSM futuras, aún sin implementar.
 
 ## Capas
 
-- Build: `make clean && make`, advertencias activadas y ejecución del placeholder.
+- Build: `make clean && make`, advertencias activadas y ejecución de `--help` y `make test` para Fase 1.
 - Unitarias futuras en C: memoria/límites; codec y tamaños; parser; transiciones y
   fases con transporte simulado. No dependen de dos terminales ni de sleeps.
 - Integración futura: lanzar ambos procesos, esperar HELLO con plazo y enviar órdenes

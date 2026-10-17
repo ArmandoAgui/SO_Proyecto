@@ -1,5 +1,10 @@
 # Protocolo conceptual — propuesta, sin implementar
 
+La Fase 1 solo implementa el saludo textual `HELLO 0\n` (N0 → N1) y
+`HELLO_ACK 1\n` (N1 → N0), en `node`/`network`. El módulo `protocol` sigue como stub.
+El HELLO binario y todos los mensajes DSM de este documento son propuestas futuras;
+no describen el formato ejecutable actual.
+
 ## Autoridad y orden
 
 N0 mantiene el directorio y admite una sola operación global. Todas las órdenes read/write
@@ -23,7 +28,7 @@ no confundirla con origin_id cuando N0 reenvía una solicitud.
 
 | Mensaje | Emisor → receptor; momento | Información específica | Respuesta esperada |
 |---|---|---|---|
-| HELLO | N1 → N0 al conectar | Identidad, tamaño/número de páginas, versión de protocolo | HELLO de N0 compatible o ERROR y cierre |
+| HELLO | N0 → N1 al conectar (propuesta binaria futura) | Identidad, tamaño/número de páginas, versión de protocolo | HELLO de N1 compatible o ERROR y cierre |
 | READ_REQUEST | Solicitante → N0 al leer, incluso hit local | Estado y versión que declara la copia local | GRANT READ si válida; PAGE_DATA READ si falta; ERROR |
 | WRITE_REQUEST | Solicitante → N0 antes de cualquier escritura | Estado/versión local; texto queda pendiente en CLI | GRANT WRITE o PAGE_DATA WRITE después de invalidaciones; ERROR |
 | FETCH_PAGE | N0 → dueño si faltan bytes para atender un acceso | Página y versión confirmada esperada | PAGE_DATA FETCH_REPLY o ERROR |

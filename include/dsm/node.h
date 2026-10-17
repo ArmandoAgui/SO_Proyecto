@@ -3,7 +3,15 @@
 
 #include "dsm/types.h"
 
-/* Stub: returns DSM_NOT_IMPLEMENTED without performing DSM operations. */
-DSMStatus dsm_node_run(void);
+typedef struct {
+    int id;
+    int listen_port;
+    int peer_port;
+    int server_fd;
+    int peer_fd;
+} DSMNode;
+
+/* Configuration is validated by main; descriptors start at -1. */
+DSMStatus dsm_node_run(DSMNode *node);
 
 #endif /* DSM_NODE_H */

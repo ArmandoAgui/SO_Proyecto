@@ -1,8 +1,37 @@
-# Arquitectura propuesta
+# Arquitectura: Fase 1 y diseño futuro
 
-## Modelo
+## Implementado en Fase 1
 
-Dos ejecutables del mismo programa con `--id 0` o `--id 1`. N0 escucha; N1 conecta.
+Ambos procesos crean un servidor TCP IPv4 en loopback. **N0 conecta a N1; N1 acepta**.
+Esta decisión sustituye el arranque anteriormente propuesto (N0 escucha y N1 conecta).
+N0 reintenta ECONNREFUSED hasta 30 intentos separados por 1 segundo; ambos órdenes de
+arranque están soportados. Solo se acepta una conexión por sesión y no hay reconexión.
+El socket servidor permanece abierto hasta el cierre; no se aceptan peers adicionales.
+
+```text
+N0: servidor 127.0.0.1:5000          N1: servidor 127.0.0.1:5001
+    cliente ---------------------->    accept
+            una conexión TCP bidireccional
+            HELLO 0 -------------->
+                    <-------------- HELLO_ACK 1
+```
+
+`DSMNode` guarda ID, puertos y los dos descriptores. `main` valida argumentos;
+`node` coordina arranque, HELLO, entrada mínima y cierre; `network` gestiona sockets,
+envío completo y recepción incremental de líneas de hasta 127 bytes (sin `\n`).
+Se rechazan NUL, líneas demasiado largas, EOF parcial y mensajes HELLO inesperados.
+`poll()` atiende la red y, después del HELLO, stdin; no hay hilos. La recepción usa
+MSG_DONTWAIT y conserva líneas parciales; no bloquea el bucle esperando una línea.
+El envío es bloqueante: suficiente para los mensajes HELLO pequeños de esta fase.
+HELLO vence tras 10 segundos sin actividad de red; Ctrl+C/SIGTERM cierran recursos.
+`memory`, `protocol` y `cli` permanecen como stubs, sin inicializarse desde `node`.
+No hay memoria DSM ni validación de geometría de páginas o versión de protocolo.
+
+Ver [reporte y pruebas](../planning/FASE1_SOCKETS.md).
+
+## Modelo futuro (sin implementar)
+
+Dos ejecutables del mismo programa con `--id 0` o `--id 1`. Ambos escuchan; N0 conecta a N1.
 Una sola conexión TCP bidireccional sirve para control y páginas. Identidad, versión
 del protocolo, número de páginas y tamaño de página se validan con HELLO antes de
 aceptar comandos de memoria. No se necesitan cinco servicios ni un proceso coordinador
@@ -38,7 +67,7 @@ es insuficiente. Protocol controla la política, memory aplica operaciones local
 válidas y comprueba sus precondiciones. No exponer un puntero escribible a la CLI.
 Un encabezado común `include/dsm/types.h` contendrá tipos compartidos, sin duplicarlos.
 
-## Ejecución sin hilos
+## Ejecución DSM futura sin hilos
 
 Recomendación: un bucle `poll()` para stdin y socket en cada proceso. Un comando en
 espera no bloquea el despacho de FETCH_PAGE, INVALIDATE ni ACK. Un solo acceso global
@@ -46,9 +75,8 @@ activo; N0 devuelve ERROR(BUSY) a nuevos accesos y la CLI permite reintentarlos.
 N0 también tramita su CLI mediante el mismo despachador, sin enviarse TCP a sí mismo.
 Esto evita dos rutas con reglas de consistencia diferentes.
 
-Al comenzar, probar intercambio secuencial bloqueante en un programa de prueba de
-network; antes de integrar DSM, agregar recepción incremental y cola de envío con
-socket no bloqueante. `poll()` seguido de un `recv_all` bloqueante podría congelar el
+La Fase 1 ya tiene recepción incremental de líneas. Antes de integrar DSM, adaptar
+el framing al formato binario futuro y agregar una cola de envío con socket no bloqueante. `poll()` seguido de un `recv_all` bloqueante podría congelar el
 bucle ante una trama incompleta y no es el diseño final.
 
 ## Directorios

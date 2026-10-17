@@ -1,5 +1,9 @@
-# Encabezados iniciales
+# Encabezados
 
-dsm/types.h define únicamente el resultado DSMStatus. Los otros cinco encabezados
-declaran un stub por módulo, con guardas de inclusión. Los tipos Page/Message/DSMNode
-permanecen como propuestas en docs/architecture/data-model.md; no se implementan aún.
+`dsm/node.h` define el contexto mínimo DSMNode y su ejecución; `dsm/network.h`
+declara sockets, envío completo y buffer de líneas. `dsm/types.h` mantiene DSMStatus
+con resultados de transporte y el estado DSM_NOT_IMPLEMENTED para los stubs.
+
+`memory.h`, `protocol.h` y `cli.h` conservan sus declaraciones iniciales sin
+implementar. Page, Message y el contexto DSM ampliado de
+`docs/architecture/data-model.md` son propuestas futuras.

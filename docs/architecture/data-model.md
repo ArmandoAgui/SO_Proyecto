@@ -1,5 +1,8 @@
 # Modelo de datos propuesto
 
+La Fase 1 ya define un `DSMNode` mínimo en `include/dsm/node.h`: ID, puertos y
+descriptores, sin memoria ni transacciones.
+
 Los siguientes fragmentos son bocetos de contrato, no encabezados compilables ni una
 implementación. Confirmar nombres antes de la fase 2. Usar `<stdint.h>`, `<stdbool.h>`
 y `<stddef.h>` en los futuros encabezados.

@@ -1,7 +1,10 @@
-# Código inicial
+# Código de Fase 1
 
-main.c ofrece --help e informa que no existe simulación. node/node.c contiene el stub
-de ejecución; network, memory, protocol y cli tienen stubs de inicialización que
-retornan DSM_NOT_IMPLEMENTED. No reservan memoria DSM, abren sockets ni cambian estados.
-Los contratos detallados futuros están en docs/architecture/. Los stubs no son la API
-definitiva: sustituirlos por interfaces con contexto conforme avance cada fase.
+`main.c` valida `--id`, `--port`, `--peer-port` y ofrece `--help`. `node/node.c`
+coordina arranque, conexión única N0 → N1, HELLO/HELLO_ACK, eventos y cierre.
+`network/network.c` implementa sockets TCP IPv4, envío completo y líneas incrementales.
+
+`memory`, `protocol` y `cli` siguen como stubs que retornan DSM_NOT_IMPLEMENTED.
+No se reservan páginas ni se ejecutan operaciones DSM. El diseño futuro está en
+`docs/architecture/`; la implementación actual se explica en
+`docs/planning/FASE1_SOCKETS.md`.
