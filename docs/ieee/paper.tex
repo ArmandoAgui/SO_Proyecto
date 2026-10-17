@@ -5,11 +5,55 @@
 \usepackage{url}
 \usepackage{booktabs}
 \usepackage{amsmath}
+\usepackage[hidelinks]{hyperref}
+\usepackage{etoolbox}
+
+% Sustituir los separadores largos que IEEEtran agrega automáticamente.
+\patchcmd{\abstract}{---}{\space-\space}{}{%
+  \PackageError{paper}{No se pudo ajustar el separador del resumen}{}
+}
+\patchcmd{\IEEEkeywords}{---}{\space-\space}{}{%
+  \PackageError{paper}{No se pudo ajustar el separador de palabras clave}{}
+}
+
+% Tres columnas y dos filas; docente primero y después cinco estudiantes.
+\newcommand{\authorentry}[3]{%
+\begin{minipage}[t]{0.32\textwidth}
+\centering\normalfont\small
+\textbf{#1}\\
+\textit{#2}\\
+\textit{Universidad Centroamericana\\José Simeón Cañas}\\
+Antiguo Cuscatlán, El Salvador\\[0.3em]
+\href{mailto:#3}{#3}
+\end{minipage}%
+}
 \title{Mini-simulador de memoria compartida distribuida a nivel de página en Linux}
-\author{\IEEEauthorblockN{Armando, Daniel, Guillermo, Daniel y Mauricio}
-\IEEEauthorblockA{Sistemas Operativos --- Proyecto 10\\
-Catedrático: David Garcia Cerna\\
-Institución y sección: por completar}}
+\author{%
+\begin{tabular}{@{}c@{\hspace{0.02\textwidth}}c@{\hspace{0.02\textwidth}}c@{}}
+\authorentry{David Garcia Cerna}
+  {Catedrático del Departamento de\\Electrónica e Informática}
+  {dgarciac@uca.edu.sv}
+&
+\authorentry{Armando Antonio\\Aguilar Rosales}
+  {Ingeniería Informática}
+  {00174323@uca.edu.sv}
+&
+\authorentry{Josue Daniel\\Rivera Alvarenga}
+  {Ingeniería Informática}
+  {00048722@uca.edu.sv}
+\\[1.5em]
+\authorentry{Guillermo Alejandro\\Hernandez Dubon}
+  {Ingeniería Informática}
+  {00106423@uca.edu.sv}
+&
+\authorentry{Heber Josue\\Canales Henriquez}
+  {Ingeniería Informática}
+  {00054621@uca.edu.sv}
+&
+\authorentry{Mauricio Alejandro\\Contreras Montoya}
+  {Ingeniería Informática}
+  {00000422@uca.edu.sv}
+\end{tabular}}
 \begin{document}
 \maketitle
 \begin{abstract}
@@ -211,7 +255,7 @@ Fallos simulados & 2 & 1\\
 PAGE\_DATA enviados & 1 & 2\\
 PAGE\_DATA recibidos & 2 & 1\\
 Invalidaciones aplicadas & 2 & 1\\
-Commits del coordinador & 5 & ---\\
+Commits del coordinador & 5 & -\\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -236,11 +280,11 @@ que una reconexión simple preservaría la propiedad.
 
 \begin{thebibliography}{7}
 \bibitem{li} K. Li and P. Hudak, ``Memory Coherence in Shared Virtual Memory Systems,''
-\emph{ACM Trans. Comput. Syst.}, vol. 7, no. 4, pp. 321--359, Nov. 1989,
+\emph{ACM Trans. Comput. Syst.}, vol. 7, no. 4, pp. 321-359, Nov. 1989,
 doi: 10.1145/75104.75105.
 \bibitem{lamport} L. Lamport, ``How to Make a Multiprocessor Computer That Correctly
 Executes Multiprocess Programs,'' \emph{IEEE Trans. Comput.}, vol. C-28, no. 9,
-pp. 690--691, Sept. 1979.
+pp. 690-691, Sept. 1979.
 \bibitem{tcp} Linux man-pages, ``tcp(7).'' [Online]. Available:
 \url{https://man7.org/linux/man-pages/man7/tcp.7.html}. Accessed: Oct. 17, 2026.
 \bibitem{recv} Linux man-pages, ``recv(2).'' [Online]. Available:
